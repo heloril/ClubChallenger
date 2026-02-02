@@ -1,0 +1,14 @@
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\bin\Debug\NameParser.UI.exe.config
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\bin\Debug\NameParser.UI.exe
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\bin\Debug\NameParser.UI.pdb
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\obj\Debug\NameParser.UI.csproj.AssemblyReference.cache
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\obj\Debug\MainWindow.baml
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\obj\Debug\MainWindow.g.cs
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\obj\Debug\App.g.cs
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\obj\Debug\NameParser.UI_MarkupCompile.cache
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\obj\Debug\NameParser.UI.g.resources
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\obj\Debug\NameParser.UI.Properties.Resources.resources
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\obj\Debug\NameParser.UI.csproj.GenerateResource.cache
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\obj\Debug\NameParser.UI.csproj.CoreCompileInputs.cache
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\obj\Debug\NameParser.UI.exe
+C:\Users\helori.lamberty\OneDrive - Helori Software Engineering\MailSerAthl\2025-01-29NameParser\NameParser.UI\obj\Debug\NameParser.UI.pdb

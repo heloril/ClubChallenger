@@ -1,0 +1,485 @@
+﻿<Window x:Class="NameParser.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:viewModels="clr-namespace:NameParser.UI.ViewModels"
+        xmlns:converters="clr-namespace:NameParser.UI.Converters"
+        xmlns:local="clr-namespace:NameParser.UI.Converters"
+        Title="{Binding Localization[WindowTitle]}" Height="800" Width="1200"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.DataContext>
+        <viewModels:MainViewModel />
+    </Window.DataContext>
+
+    <Window.Resources>
+        <Style TargetType="TextBlock">
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="Height" Value="30"/>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="Height" Value="30"/>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="MinWidth" Value="100"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="#2196F3" Padding="10" Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="{Binding Localization[WindowTitle]}" FontSize="24" FontWeight="Bold" Foreground="White"/>
+
+                <!-- Language Selector -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Localization[Language]}" Foreground="White" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                    <ComboBox ItemsSource="{Binding AvailableLanguages}" 
+                              SelectedValue="{Binding SelectedLanguage}"
+                              SelectedValuePath="Code"
+                              DisplayMemberPath="DisplayName"
+                              Width="120"
+                              Height="30"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Content -->
+        <TabControl Grid.Row="1">
+
+            <!-- Upload and Process Tab -->
+            <TabItem Header="{Binding Localization[TabUploadProcess]}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="400"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Input Form -->
+                    <Border Grid.Column="0" BorderBrush="#CCCCCC" BorderThickness="1" Padding="10" Margin="5">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Localization[RaceInformation]}" FontSize="18" FontWeight="Bold" Margin="5,5,5,15"/>
+
+                            <!-- File Upload -->
+                            <GroupBox Header="{Binding Localization[ExcelFile]}" Margin="5">
+                                <StackPanel>
+                                    <TextBox Text="{Binding SelectedFilePath, Mode=OneWay}" IsReadOnly="True" 
+                                             Background="#F5F5F5" ToolTip="Selected file path"/>
+                                    <Button Content="{Binding Localization[BrowseFile]}" Command="{Binding UploadFileCommand}" 
+                                            HorizontalAlignment="Stretch"/>
+                                </StackPanel>
+                            </GroupBox>
+
+                            <!-- Race Details -->
+                            <GroupBox Header="{Binding Localization[RaceDetails]}" Margin="5">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Localization[RaceName]}"/>
+                                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding RaceName, UpdateSourceTrigger=PropertyChanged}"/>
+
+                                    <CheckBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" 
+                                              Content="{Binding Localization[HorsChallenge]}" 
+                                              IsChecked="{Binding IsHorsChallenge}"
+                                              Margin="5" 
+                                              ToolTip="{Binding Localization[HorsChallengeTooltip]}"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding Localization[Year]}"/>
+                                    <ComboBox Grid.Row="2" Grid.Column="1" 
+                                              ItemsSource="{Binding Years}" 
+                                              SelectedItem="{Binding Year}"
+                                              IsEnabled="{Binding IsHorsChallenge, Converter={StaticResource InverseBoolConverter}}"/>
+
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="{Binding Localization[RaceNumber]}"/>
+                                    <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding RaceNumber, UpdateSourceTrigger=PropertyChanged}"/>
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="{Binding Localization[Distance]}"/>
+                                    <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding DistanceKm, UpdateSourceTrigger=PropertyChanged}"/>
+                                </Grid>
+                            </GroupBox>
+
+                            <!-- Process Button -->
+                            <Button Content="{Binding Localization[ProcessRace]}" Command="{Binding ProcessRaceCommand}" 
+                                    FontSize="16" FontWeight="Bold" Height="40" Margin="5,15,5,5"
+                                    Background="#4CAF50" Foreground="White">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                        <Style.Triggers>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Background" Value="#CCCCCC"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+
+                            <!-- Processing Indicator -->
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="5"
+                                        Visibility="{Binding IsProcessing, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="{Binding Localization[Processing]}" FontStyle="Italic" Margin="5"/>
+                                <ProgressBar IsIndeterminate="True" Width="100" Height="20"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Instructions -->
+                    <Border Grid.Column="1" BorderBrush="#CCCCCC" BorderThickness="1" Padding="10" Margin="5">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Localization[Instructions]}" FontSize="18" FontWeight="Bold" Margin="5,5,5,15"/>
+
+                            <TextBlock TextWrapping="Wrap" Margin="5">
+                                <Run Text="{Binding Localization[Instruction1], Mode=OneWay}" FontWeight="Bold"/>
+                                <LineBreak/><LineBreak/>
+                                <Run Text="{Binding Localization[Instruction2], Mode=OneWay}"/>
+                                <LineBreak/>
+                                <Run Text="{Binding Localization[Instruction2a], Mode=OneWay}"/>
+                                <LineBreak/>
+                                <Run Text="{Binding Localization[Instruction2b], Mode=OneWay}"/>
+                                <LineBreak/>
+                                <Run Text="{Binding Localization[Instruction2c], Mode=OneWay}"/>
+                                <LineBreak/>
+                                <Run Text="{Binding Localization[Instruction2d], Mode=OneWay}"/>
+                                <LineBreak/><LineBreak/>
+                                <Run Text="{Binding Localization[Instruction3], Mode=OneWay}" FontWeight="Bold"/>
+                                <LineBreak/><LineBreak/>
+                                <Run Text="{Binding Localization[Instruction4], Mode=OneWay}"/>
+                            </TextBlock>
+
+                            <Border Background="#FFF9C4" Padding="10" Margin="5,20,5,5">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Localization[RequirementsTitle]}" FontWeight="Bold"/>
+                                    <TextBlock Text="{Binding Localization[Requirement1]}" TextWrapping="Wrap" Margin="5,5,5,0"/>
+                                    <TextBlock Text="{Binding Localization[Requirement2]}" TextWrapping="Wrap" Margin="5,2,5,0"/>
+                                    <TextBlock Text="{Binding Localization[Requirement3]}" TextWrapping="Wrap" Margin="5,2,5,0"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- Race Classification Tab -->
+            <TabItem Header="{Binding Localization[TabRaceClassification]}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Race Selection -->
+                    <GroupBox Grid.Row="0" Header="{Binding Localization[SelectRace]}" Margin="5">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Action Buttons -->
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5">
+                                <Button Content="{Binding Localization[RefreshRaces]}" Command="{Binding RefreshRacesCommand}"/>
+                                <Button Content="{Binding Localization[ViewClassification]}" Command="{Binding ViewClassificationCommand}"/>
+                                <Button Content="{Binding Localization[ReprocessRace]}" Command="{Binding ReprocessRaceCommand}" Background="#FF9800" Foreground="White"/>
+                                <Button Content="{Binding Localization[DownloadResults]}" Command="{Binding DownloadResultCommand}"/>
+                                <Button Content="{Binding Localization[ExportForEmail]}" Command="{Binding ExportForEmailCommand}" Background="#4CAF50" Foreground="White"/>
+                                <Button Content="{Binding Localization[ExportMultipleRaces]}" Command="{Binding ExportMultipleForEmailCommand}" Background="#2196F3" Foreground="White"/>
+                                <Button Content="{Binding Localization[DeleteRace]}" Command="{Binding DeleteRaceCommand}" Background="#F44336" Foreground="White"/>
+                            </StackPanel>
+
+                            <!-- Races Grid -->
+                            <DataGrid Grid.Row="1" ItemsSource="{Binding Races}" 
+                                      SelectedItem="{Binding SelectedRace}"
+                                      SelectionChanged="RacesDataGrid_SelectionChanged"
+                                      x:Name="RacesDataGrid"
+                                      AutoGenerateColumns="False" 
+                                      IsReadOnly="True"
+                                      SelectionMode="Extended"
+                                      MaxHeight="200"
+                                      Margin="5">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[ID], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Id}" Width="50"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Year], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Year}" Width="80"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[RaceNumber], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding RaceNumber}" Width="80"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Race], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Name}" Width="*"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Distance], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding DistanceKm}" Width="100"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Status], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Status}" Width="100"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[ProcessedDate], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding ProcessedDate, StringFormat='yyyy-MM-dd HH:mm'}" Width="150"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </GroupBox>
+
+                    <!-- Race Classifications -->
+                    <GroupBox Grid.Row="1" Header="{Binding Localization[RaceResults]}" Margin="5">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Member and Challenger Filters -->
+                            <Border Grid.Row="0" Background="#F5F5F5" Padding="10" Margin="5">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                                        <TextBlock Text="{Binding Localization[FilterByMembership]}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,15,0"/>
+                                        <Button Content="{Binding Localization[AllParticipants]}" Command="{Binding ShowAllCommand}" Width="140" Margin="0,0,5,0"/>
+                                        <Button Content="{Binding Localization[MembersOnly]}" Command="{Binding ShowOnlyMembersCommand}" Width="140" Margin="0,0,5,0"/>
+                                        <Button Content="{Binding Localization[NonMembersOnly]}" Command="{Binding ShowOnlyNonMembersCommand}" Width="160" Margin="0,0,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Localization[FilterByChallenge]}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,15,0" Width="140"/>
+                                        <Button Content="{Binding Localization[ChallengersOnly]}" Command="{Binding ShowOnlyChallengersCommand}" Width="140" Margin="0,0,5,0"/>
+                                        <Button Content="{Binding Localization[NonChallengersOnly]}" Command="{Binding ShowOnlyNonChallengersCommand}" Width="160" Margin="0,0,0,0"/>
+                                        <TextBlock Text="{Binding Localization[WinnerAlwaysShown]}" 
+                                                   FontStyle="Italic" 
+                                                   VerticalAlignment="Center" 
+                                                   Margin="15,0,0,0"
+                                                   Foreground="#666"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- DataGrid -->
+                            <DataGrid Grid.Row="1" ItemsSource="{Binding Classifications}" 
+                                      AutoGenerateColumns="False" 
+                                      IsReadOnly="True"
+                                      Margin="5">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Rank], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Id}" Width="60"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Position], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Position}" Width="70"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[FirstName], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding MemberFirstName}" Width="*"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[LastName], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding MemberLastName}" Width="*"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Sex], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Sex}" Width="50"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[PosBySex], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding PositionBySex}" Width="70"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Category], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding AgeCategory}" Width="80"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[PosByCategory], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding PositionByCategory}" Width="70"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Team], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Team}" Width="120"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Points], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Points}" Width="80"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[RaceTime], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding RaceTime, Converter={StaticResource TimeSpanToStringConverter}}" Width="100"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[TimePerKm], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding TimePerKm, Converter={StaticResource TimeSpanToStringConverter}}" Width="90"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Speed], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Speed, StringFormat={}{0:F2}}" Width="100"/>
+                                    <DataGridCheckBoxColumn Header="{Binding DataContext.Localization[Member], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding IsMember}" Width="70" IsReadOnly="True"/>
+                                    <DataGridCheckBoxColumn Header="{Binding DataContext.Localization[Challenger], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding IsChallenger}" Width="80" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[BonusKM], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding BonusKm}" Width="90"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+
+            <!-- General Classification Tab -->
+            <TabItem Header="{Binding Localization[TabGeneralClassification]}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Year Selection and Filter -->
+                    <Border Grid.Row="0" Background="#E3F2FD" Padding="10" Margin="5">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Localization[SelectYear]}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <ComboBox ItemsSource="{Binding Years}" 
+                                      SelectedItem="{Binding SelectedYear}" 
+                                      Width="100"
+                                      Height="30"/>
+                            <Button Content="{Binding Localization[LoadClassification]}" Command="{Binding ViewGeneralClassificationCommand}" Margin="10,0,0,0"/>
+                            <TextBlock Text="{Binding Localization[GeneralClassificationNote]}" 
+                                       FontStyle="Italic" 
+                                       VerticalAlignment="Center" 
+                                       Margin="20,0,0,0"
+                                       Foreground="#666"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- General Classifications -->
+                    <GroupBox Grid.Row="1" Header="{Binding Localization[GeneralClassificationResults]}" Margin="5">
+                        <DataGrid ItemsSource="{Binding GeneralClassifications}" 
+                                  AutoGenerateColumns="False" 
+                                  IsReadOnly="True"
+                                  Margin="5">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="{Binding DataContext.Localization[Rank], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Rank}" Width="60"/>
+                                <DataGridTextColumn Header="{Binding DataContext.Localization[FirstName], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding MemberFirstName}" Width="*"/>
+                                <DataGridTextColumn Header="{Binding DataContext.Localization[LastName], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding MemberLastName}" Width="*"/>
+                                <DataGridTextColumn Header="{Binding DataContext.Localization[Team], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Team}" Width="120"/>
+                                <DataGridTextColumn Header="{Binding DataContext.Localization[TotalPoints], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding TotalPoints}" Width="100"/>
+                                <DataGridTextColumn Header="{Binding DataContext.Localization[Races], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding RaceCount}" Width="70"/>
+                                <DataGridTextColumn Header="{Binding DataContext.Localization[AvgPoints], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding AveragePoints}" Width="90"/>
+                                <DataGridTextColumn Header="{Binding DataContext.Localization[BestPosition], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding BestPosition}" Width="80"/>
+                                <DataGridTextColumn Header="{Binding DataContext.Localization[BestTime], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding BestRaceTime, Converter={StaticResource TimeSpanToStringConverter}}" Width="100"/>
+                                <DataGridTextColumn Header="{Binding DataContext.Localization[BestTimePerKm], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding BestTimePerKm, Converter={StaticResource TimeSpanToStringConverter}}" Width="90"/>
+                                <DataGridTextColumn Header="{Binding DataContext.Localization[TotalBonusKM], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding TotalBonusKm}" Width="110"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+
+            <!-- Challenger Classification Tab -->
+            <TabItem Header="{Binding Localization[TabChallengerClassification]}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Year Selection and Actions -->
+                    <Border Grid.Row="0" Background="#FFF3E0" Padding="10" Margin="5">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                                <TextBlock Text="{Binding Localization[SelectYear]}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <ComboBox ItemsSource="{Binding Years}" 
+                                          SelectedItem="{Binding SelectedYear}" 
+                                          Width="100"
+                                          Height="30"/>
+                                <Button Content="{Binding Localization[LoadChallengers]}" Command="{Binding ViewChallengerClassificationCommand}" Margin="10,0,10,0"/>
+                                <Button Content="{Binding Localization[Export]}" Command="{Binding ExportChallengerClassificationCommand}" Background="#FF9800" Foreground="White"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding Localization[ChallengerClassificationNote]}" 
+                                       FontStyle="Italic" 
+                                       Foreground="#666"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Challenger Classifications -->
+                    <GroupBox Grid.Row="1" Header="{Binding Localization[ChallengerClassificationResults]}" Margin="5">
+                        <ScrollViewer>
+                            <ItemsControl ItemsSource="{Binding ChallengerClassifications}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="#DDDDDD" BorderThickness="1" Margin="5" Padding="10">
+                                            <StackPanel>
+                                                <!-- Challenger Summary -->
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,20,0">
+                                                        <TextBlock Text="🥇" FontSize="20" Margin="0,0,10,0" Visibility="{Binding RankByPoints, Converter={StaticResource RankToVisibilityConverter}, ConverterParameter=1}"/>
+                                                        <TextBlock Text="🥈" FontSize="20" Margin="0,0,10,0" Visibility="{Binding RankByPoints, Converter={StaticResource RankToVisibilityConverter}, ConverterParameter=2}"/>
+                                                        <TextBlock Text="🥉" FontSize="20" Margin="0,0,10,0" Visibility="{Binding RankByPoints, Converter={StaticResource RankToVisibilityConverter}, ConverterParameter=3}"/>
+                                                        <TextBlock Text="{Binding RankByPoints, StringFormat='#{0}'}" FontSize="18" FontWeight="Bold" Foreground="#FF9800" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock FontSize="16" FontWeight="Bold">
+                                                            <Run Text="{Binding ChallengerFirstName}"/>
+                                                            <Run Text="{Binding ChallengerLastName}"/>
+                                                        </TextBlock>
+                                                        <TextBlock Text="{Binding Team}" FontStyle="Italic" Foreground="#666"/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Column="2" HorizontalAlignment="Right">
+                                                        <TextBlock>
+                                                            <Run Text="{Binding DataContext.Localization[PointsWithBreakdown], Mode=OneWay, RelativeSource={RelativeSource AncestorType=Window}}" FontWeight="Bold"/>
+                                                            <Run Text="{Binding TotalPoints}" FontSize="16" FontWeight="Bold" Foreground="#FF9800"/>
+                                                            <Run Text=" (" Foreground="#666"/>
+                                                            <Run Text="{Binding DataContext.Localization[Best7], Mode=OneWay, RelativeSource={RelativeSource AncestorType=Window}}" Foreground="#666"/>
+                                                            <Run Text="{Binding Best7RacesPoints}" Foreground="#666"/>
+                                                            <Run Text=" + " Foreground="#666"/>
+                                                            <Run Text="{Binding DataContext.Localization[Bonus], Mode=OneWay, RelativeSource={RelativeSource AncestorType=Window}}" Foreground="#666"/>
+                                                            <Run Text="{Binding TotalBonusKm}" Foreground="#666"/>
+                                                            <Run Text=")" Foreground="#666"/>
+                                                        </TextBlock>
+                                                        <TextBlock>
+                                                            <Run Text="{Binding DataContext.Localization[KMsRank], Mode=OneWay, RelativeSource={RelativeSource AncestorType=Window}}" FontWeight="Bold"/>
+                                                            <Run Text="{Binding RankByKms, StringFormat='#{0}'}"/>
+                                                            <Run Text=" - "/>
+                                                            <Run Text="{Binding DataContext.Localization[Total], Mode=OneWay, RelativeSource={RelativeSource AncestorType=Window}}" FontWeight="Bold"/>
+                                                            <Run Text="{Binding TotalKilometers, StringFormat={}{0} km}"/>
+                                                        </TextBlock>
+                                                        <TextBlock>
+                                                            <Run Text="{Binding DataContext.Localization[Races], Mode=OneWay, RelativeSource={RelativeSource AncestorType=Window}}" FontWeight="Bold"/>
+                                                            <Run Text="{Binding RaceCount}"/>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                </Grid>
+
+                                                <!-- Race by Race Details -->
+                                                <TextBlock Text="{Binding DataContext.Localization[RaceByRace], RelativeSource={RelativeSource AncestorType=Window}}" FontWeight="Bold" Margin="0,10,0,5"/>
+                                                <DataGrid ItemsSource="{Binding RaceDetails}" 
+                                                          AutoGenerateColumns="False" 
+                                                          IsReadOnly="True"
+                                                          HeadersVisibility="Column"
+                                                          GridLinesVisibility="Horizontal"
+                                                          Margin="0,0,0,5">
+                                                    <DataGrid.Resources>
+                                                        <Style TargetType="DataGridRow">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsInBest7}" Value="True">
+                                                                    <Setter Property="Background" Value="#C8E6C9"/>
+                                                                    <Setter Property="FontWeight" Value="Bold"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </DataGrid.Resources>
+                                                    <DataGrid.Columns>
+                                                        <DataGridTextColumn Header="#" Binding="{Binding RaceNumber}" Width="40"/>
+                                                        <DataGridTextColumn Header="{Binding DataContext.Localization[Race], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding RaceName}" Width="*"/>
+                                                        <DataGridTextColumn Header="{Binding DataContext.Localization[Distance], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding DistanceKm, StringFormat={}{0} km}" Width="80"/>
+                                                        <DataGridTextColumn Header="{Binding DataContext.Localization[Position], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Position}" Width="70"/>
+                                                        <DataGridTextColumn Header="{Binding DataContext.Localization[Points], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Points}" Width="70"/>
+                                                        <DataGridTextColumn Header="{Binding DataContext.Localization[Bonus], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding BonusKm}" Width="70"/>
+                                                        <DataGridTextColumn Header="{Binding DataContext.Localization[IsInBest7], RelativeSource={RelativeSource AncestorType=Window}}" Width="60">
+                                                            <DataGridTextColumn.Binding>
+                                                                <Binding Path="IsInBest7">
+                                                                    <Binding.Converter>
+                                                                        <local:BoolToYesNoConverter/>
+                                                                    </Binding.Converter>
+                                                                </Binding>
+                                                            </DataGridTextColumn.Binding>
+                                                        </DataGridTextColumn>
+                                                    </DataGrid.Columns>
+                                                </DataGrid>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+
+        </TabControl>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="2" Background="#EEEEEE" Padding="10" Margin="0,10,0,0">
+            <TextBlock Text="{Binding StatusMessage}" FontStyle="Italic" Foreground="#666666"/>
+        </Border>
+    </Grid>
+</Window>
