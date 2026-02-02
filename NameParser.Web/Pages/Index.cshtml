@@ -1,0 +1,113 @@
+﻿@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Race Processing - Club Challenger";
+}
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4><i class="bi bi-upload"></i> Upload & Process Race</h4>
+            </div>
+            <div class="card-body">
+                @if (!string.IsNullOrEmpty(Model.StatusMessage))
+                {
+                    <div class="alert @(Model.IsError ? "alert-danger" : "alert-success") alert-dismissible fade show" role="alert">
+                        @Model.StatusMessage
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                }
+
+                <form method="post" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label asp-for="UploadedFile" class="form-label">Race Result File (Excel or PDF)</label>
+                        <input asp-for="UploadedFile" class="form-control" type="file" accept=".xlsx,.pdf" required />
+                        <span asp-validation-for="UploadedFile" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="RaceName" class="form-label">Race Name</label>
+                        <input asp-for="RaceName" class="form-control" placeholder="Enter race name" required />
+                        <span asp-validation-for="RaceName" class="text-danger"></span>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input asp-for="IsHorsChallenge" class="form-check-input" type="checkbox" />
+                        <label asp-for="IsHorsChallenge" class="form-check-label">
+                            Hors Challenge (Not part of the challenge)
+                        </label>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Year" class="form-label">Year</label>
+                        <select asp-for="Year" class="form-select" asp-items="Model.Years">
+                            <option value="">Select Year</option>
+                        </select>
+                        <span asp-validation-for="Year" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="RaceNumber" class="form-label">Race Number</label>
+                        <input asp-for="RaceNumber" class="form-control" type="number" min="1" placeholder="1" required />
+                        <span asp-validation-for="RaceNumber" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="DistanceKm" class="form-label">Distance (km)</label>
+                        <input asp-for="DistanceKm" class="form-control" type="number" min="1" placeholder="10" required />
+                        <span asp-validation-for="DistanceKm" class="text-danger"></span>
+                    </div>
+
+                    <button type="submit" class="btn btn-success w-100 btn-lg">
+                        <i class="bi bi-check-circle"></i> Process Race
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h4><i class="bi bi-info-circle"></i> Instructions</h4>
+            </div>
+            <div class="card-body">
+                <h5>Step 1: Select File</h5>
+                <p>Choose an Excel (.xlsx) or PDF file containing race results.</p>
+
+                <h5>Step 2: Enter Race Information</h5>
+                <ul>
+                    <li><strong>Race Name</strong>: Name of the race</li>
+                    <li><strong>Year</strong>: Year of the race (required unless "Hors Challenge")</li>
+                    <li><strong>Race Number</strong>: Sequential number for the challenge</li>
+                    <li><strong>Distance</strong>: Race distance in kilometers</li>
+                </ul>
+
+                <h5>Step 3: Process</h5>
+                <p>Click "Process Race" to analyze results, calculate points, and generate classifications.</p>
+
+                <div class="alert alert-warning mt-3">
+                    <strong>Requirements:</strong>
+                    <ul class="mb-0">
+                        <li>Excel/PDF file must contain participant names</li>
+                        <li>File should include timing information</li>
+                        <li>Members must be registered in the system</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        document.getElementById('IsHorsChallenge').addEventListener('change', function() {
+            document.getElementById('Year').disabled = this.checked;
+            if (this.checked) {
+                document.getElementById('Year').value = '';
+            }
+        });
+    </script>
+}

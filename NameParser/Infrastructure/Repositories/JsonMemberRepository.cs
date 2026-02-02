@@ -26,8 +26,13 @@ namespace NameParser.Infrastructure.Repositories
             var json = File.ReadAllText(filePath);
             var dtos = JsonConvert.DeserializeObject<List<MemberDto>>(json);
 
-            return dtos?.Select(dto => new Member(dto.FirstName, dto.LastName, dto.Email)).ToList()
-                   ?? new List<Member>();
+            return dtos?.Select(dto => new Member(
+                dto.FirstName, 
+                dto.LastName, 
+                dto.Email, 
+                dto.IsMember ?? true,  // Default to true if not specified
+                dto.IsChallenger ?? false  // Default to false if not specified
+            )).ToList() ?? new List<Member>();
         }
 
         public List<Member> GetMembersWithLastName()
@@ -41,7 +46,13 @@ namespace NameParser.Infrastructure.Repositories
 
             return dtos?
                 .Where(dto => !string.IsNullOrWhiteSpace(dto.LastName))
-                .Select(dto => new Member(dto.FirstName, dto.LastName, dto.Email))
+                .Select(dto => new Member(
+                    dto.FirstName, 
+                    dto.LastName, 
+                    dto.Email,
+                    dto.IsMember ?? true,  // Default to true if not specified
+                    dto.IsChallenger ?? false  // Default to false if not specified
+                ))
                 .ToList()
                 ?? new List<Member>();
         }
@@ -56,6 +67,8 @@ namespace NameParser.Infrastructure.Repositories
             public string FirstName { get; set; }
             public string LastName { get; set; }
             public string Email { get; set; }
+            public bool? IsMember { get; set; }
+            public bool? IsChallenger { get; set; }
         }
     }
 }

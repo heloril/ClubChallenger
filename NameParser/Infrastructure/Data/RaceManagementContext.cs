@@ -30,7 +30,8 @@ namespace NameParser.Infrastructure.Data
                 var connectionString = ConfigurationManager.ConnectionStrings["RaceManagementDb"]?.ConnectionString;
                 if (string.IsNullOrEmpty(connectionString))
                 {
-                    connectionString = @"Data Source=(LocalDB)\MSSQLLocalDB;AttachDbFilename=|DataDirectory|\RaceManagement.mdf;Integrated Security=True;Connect Timeout=30";
+                    // Use catalog-based connection instead of file attachment
+                    connectionString = @"Data Source=(LocalDB)\MSSQLLocalDB;Initial Catalog=RaceManagementDb;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
                 }
                 optionsBuilder.UseSqlServer(connectionString);
             }
@@ -40,8 +41,10 @@ namespace NameParser.Infrastructure.Data
         {
             base.OnModelCreating(modelBuilder);
 
+            // Unique constraint on Year, RaceNumber, and DistanceKm
+            // This allows multiple races with the same year/number but different distances
             modelBuilder.Entity<RaceEntity>()
-                .HasIndex(r => new { r.Year, r.RaceNumber })
+                .HasIndex(r => new { r.Year, r.RaceNumber, r.DistanceKm })
                 .IsUnique();
 
             modelBuilder.Entity<ClassificationEntity>()
@@ -189,6 +192,31 @@ namespace NameParser.Infrastructure.Data
                         BEGIN
                             ALTER TABLE [dbo].[Races] ADD [FileExtension] NVARCHAR(10) NULL;
                             PRINT 'FileExtension column added to Races table';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Update unique index from (Year, RaceNumber) to (Year, RaceNumber, DistanceKm)
+                    // This allows multiple races with same year/number but different distances
+                    command.CommandText = @"
+                        IF EXISTS (
+                            SELECT * FROM sys.indexes 
+                            WHERE name = 'IX_Races_Year_RaceNumber' 
+                            AND object_id = OBJECT_ID(N'[dbo].[Races]')
+                        )
+                        BEGIN
+                            DROP INDEX [IX_Races_Year_RaceNumber] ON [dbo].[Races];
+                            PRINT 'Old index IX_Races_Year_RaceNumber dropped';
+                        END
+
+                        IF NOT EXISTS (
+                            SELECT * FROM sys.indexes 
+                            WHERE name = 'IX_Races_Year_RaceNumber_DistanceKm' 
+                            AND object_id = OBJECT_ID(N'[dbo].[Races]')
+                        )
+                        BEGIN
+                            CREATE UNIQUE NONCLUSTERED INDEX [IX_Races_Year_RaceNumber_DistanceKm]
+                            ON [dbo].[Races] ([Year] ASC, [RaceNumber] ASC, [DistanceKm] ASC);
+                            PRINT 'New index IX_Races_Year_RaceNumber_DistanceKm created';
                         END";
                     command.ExecuteNonQuery();
                 }

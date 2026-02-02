@@ -19,6 +19,20 @@ namespace NameParser.Infrastructure.Data
         {
             using (var context = new RaceManagementContext())
             {
+                // Check if a race with the same year, race number, and distance already exists
+                var existingRace = context.Races
+                    .FirstOrDefault(r => r.Year == year 
+                                      && r.RaceNumber == race.RaceNumber 
+                                      && r.DistanceKm == race.DistanceKm);
+
+                if (existingRace != null)
+                {
+                    throw new System.InvalidOperationException(
+                        $"A race with Year={year?.ToString() ?? "Hors Challenge"}, RaceNumber={race.RaceNumber}, " +
+                        $"and Distance={race.DistanceKm}km already exists (ID: {existingRace.Id}). " +
+                        $"Please use a different race number, distance, or delete the existing race first.");
+                }
+
                 // Read the file content into memory
                 var fileData = _fileStorageService.ReadRaceFile(filePath);
 

@@ -58,6 +58,75 @@ namespace NameParser.Application.Services
             return classification;
         }
 
+        public Classification ProcessRace(
+            string filePath,
+            string raceName,
+            int raceNumber,
+            int? year,
+            int distanceKm,
+            IRaceResultRepository repository)
+        {
+            var race = new Race(raceNumber, raceName, distanceKm);
+            var members = _memberRepository.GetMembersWithLastName();
+            var classification = new Classification();
+
+            // Process the race results using the provided repository
+            var results = repository.GetRaceResults(filePath, members);
+
+            // Phase 1: Extract all race data and find reference time
+            var parsedResults = new List<ParsedRaceResult>();
+            TimeSpan referenceTime = TimeSpan.FromSeconds(1);
+            bool isTimePerKmRace = false;
+
+            foreach (var result in results.OrderBy(c => c.Key))
+            {
+                var individualResult = result.Value.Split(';');
+                var parsedResult = ParseRaceResult(individualResult, result.Value, members, ref isTimePerKmRace);
+
+                if (parsedResult.IsValid)
+                {
+                    if (parsedResult.IsReferenceTime)
+                    {
+                        referenceTime = parsedResult.Time;
+                    }
+                    parsedResults.Add(parsedResult);
+                }
+            }
+
+            // Phase 2: Calculate points for all participants now that we have the reference time
+            foreach (var parsedResult in parsedResults)
+            {
+                int points = _pointsCalculationService.CalculatePoints(referenceTime, parsedResult.Time);
+
+                foreach (var member in parsedResult.Members)
+                {
+                    // Use extracted times if available
+                    TimeSpan? finalRaceTime = parsedResult.ExtractedRaceTime ??
+                                            (isTimePerKmRace ? null : (TimeSpan?)parsedResult.Time);
+                    TimeSpan? finalTimePerKm = parsedResult.ExtractedTimePerKm ??
+                                             (isTimePerKmRace ? (TimeSpan?)parsedResult.Time : null);
+
+                    // Store complete race data
+                    classification.AddOrUpdateResult(
+                        member,
+                        race,
+                        points,
+                        finalRaceTime,
+                        finalTimePerKm,
+                        parsedResult.Position,
+                        parsedResult.Team,
+                        parsedResult.Speed,
+                        parsedResult.IsMember,
+                        parsedResult.Sex,
+                        parsedResult.PositionBySex,
+                        parsedResult.AgeCategory,
+                        parsedResult.PositionByCategory);
+                }
+            }
+
+            return classification;
+        }
+
         private void ProcessSingleRace(string raceFile, List<Member> members, Classification classification)
         {
             var raceFileName = new RaceFileName(raceFile);
