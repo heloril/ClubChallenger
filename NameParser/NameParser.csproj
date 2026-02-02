@@ -5,9 +5,21 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="Examples\**" />
+    <Compile Remove="MigrationTool\**" />
     <Compile Remove="NameParser.UI\**" />
+    <Compile Remove="NameParser\**" />
+    <Compile Remove="PdfAnalyzer\**" />
+    <EmbeddedResource Remove="Examples\**" />
+    <EmbeddedResource Remove="MigrationTool\**" />
     <EmbeddedResource Remove="NameParser.UI\**" />
+    <EmbeddedResource Remove="NameParser\**" />
+    <EmbeddedResource Remove="PdfAnalyzer\**" />
+    <None Remove="Examples\**" />
+    <None Remove="MigrationTool\**" />
     <None Remove="NameParser.UI\**" />
+    <None Remove="NameParser\**" />
+    <None Remove="PdfAnalyzer\**" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="EPPlus" Version="7.5.2" />
@@ -27,7 +39,6 @@
   <ItemGroup>
     <None Include=".github\upgrades\scenarios\new-dotnet-version_68904e\assessment.md" />
     <None Include=".github\upgrades\scenarios\new-dotnet-version_68904e\plan.md" />
-    <None Include="NameParser\NameParser.csproj" />
     <None Update="Challenge.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -196,9 +207,6 @@
     <None Include="NameParser.csproj.new" />
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="Examples\" />
     <Folder Include="Infrastructure\Data\Utilities\" />
-    <Folder Include="MigrationTool\" />
-    <Folder Include="PdfAnalyzer\" />
   </ItemGroup>
 </Project>
