@@ -208,7 +208,7 @@
                                 <Button Content="{Binding Localization[RefreshRaces]}" Command="{Binding RefreshRacesCommand}"/>
                                 <Button Content="{Binding Localization[ViewClassification]}" Command="{Binding ViewClassificationCommand}"/>
                                 <Button Content="{Binding Localization[ReprocessRace]}" Command="{Binding ReprocessRaceCommand}" Background="#FF9800" Foreground="White"/>
-                                <Button Content="{Binding Localization[DownloadResults]}" Command="{Binding DownloadResultCommand}"/>
+                                <Button Content="Download Results" Command="{Binding DownloadMultipleResultsCommand}" Background="#607D8B" Foreground="White" ToolTip="Download race results in TXT or Excel format"/>
                                 <Button Content="{Binding Localization[ExportForEmail]}" Command="{Binding ExportForEmailCommand}" Background="#4CAF50" Foreground="White"/>
                                 <Button Content="{Binding Localization[ExportMultipleRaces]}" Command="{Binding ExportMultipleForEmailCommand}" Background="#2196F3" Foreground="White"/>
                                 <Button Content="{Binding Localization[DeleteRace]}" Command="{Binding DeleteRaceCommand}" Background="#F44336" Foreground="White"/>

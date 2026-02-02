@@ -235,9 +235,16 @@ namespace NameParser.Application.Services
 
                 if (individualResult[i].Equals("SPEED", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (double.TryParse(individualResult[i + 1], NumberStyles.Any, CultureInfo.InvariantCulture, out double spd))
+                    // Handle both comma and period as decimal separators
+                    var speedText = individualResult[i + 1]?.Replace(',', '.');
+                    if (!string.IsNullOrWhiteSpace(speedText) && 
+                        double.TryParse(speedText, NumberStyles.Any, CultureInfo.InvariantCulture, out double spd))
                     {
-                        result.Speed = spd;
+                        // Validate speed is within plausible range (0-30 km/h)
+                        if (spd >= 0.0 && spd <= 30.0)
+                        {
+                            result.Speed = spd;
+                        }
                     }
                 }
 

@@ -474,22 +474,30 @@ namespace NameParser.Infrastructure.Repositories
                     double.TryParse(speedText, NumberStyles.Any, CultureInfo.InvariantCulture, out double speed))
                 {
                     // Check if the value is too large (likely missing decimal point)
-                    // For example, 1500 should be 15.00
-                    if (speed > 100 && speed < 10000)
+                    // For example, 1700 should be 17.00, 1500 should be 15.00
+                    if (speed >= 100 && speed < 10000)
                     {
                         // Likely missing decimal point - divide by 100
                         speed = speed / 100.0;
                         System.Diagnostics.Debug.WriteLine($"Speed adjusted from {speed * 100:F0} to {speed:F2} km/h. Original: '{originalSpeedText}'");
                     }
+                    // Also check for values like 170 which should be 17.0
+                    else if (speed > 30 && speed < 100)
+                    {
+                        // Likely missing decimal point - divide by 10
+                        speed = speed / 10.0;
+                        System.Diagnostics.Debug.WriteLine($"Speed adjusted from {speed * 10:F0} to {speed:F2} km/h. Original: '{originalSpeedText}'");
+                    }
 
-                    // Validate speed is reasonable (between 1 and 30 km/h for running)
-                    if (speed >= 1.0 && speed <= 30.0)
+                    // Validate speed is plausible for running (between 0 and 30 km/h)
+                    // World record marathon pace is ~21 km/h, walking is ~5 km/h
+                    if (speed >= 0.0 && speed <= 30.0)
                     {
                         return speed;
                     }
                     else
                     {
-                        System.Diagnostics.Debug.WriteLine($"Speed {speed:F2} km/h is out of range (1-30 km/h). Original: '{originalSpeedText}'");
+                        System.Diagnostics.Debug.WriteLine($"Speed {speed:F2} km/h is out of plausible range (0-30 km/h). Original: '{originalSpeedText}'");
                         return null;
                     }
                 }

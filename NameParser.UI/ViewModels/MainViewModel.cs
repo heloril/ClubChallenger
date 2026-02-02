@@ -16,6 +16,9 @@ using NameParser.Infrastructure.Data.Models;
 using NameParser.Infrastructure.Repositories;
 using NameParser.Infrastructure.Services;
 using NameParser.UI.Services;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 
 namespace NameParser.UI.ViewModels
 {
@@ -65,7 +68,7 @@ namespace NameParser.UI.ViewModels
             UploadFileCommand = new RelayCommand(ExecuteUploadFile);
             ProcessRaceCommand = new RelayCommand(ExecuteProcessRace, CanExecuteProcessRace);
             ReprocessRaceCommand = new RelayCommand(ExecuteReprocessRace, CanExecuteReprocessRace);
-            DownloadResultCommand = new RelayCommand(ExecuteDownloadResult, CanExecuteDownloadResult);
+            DownloadMultipleResultsCommand = new RelayCommand(ExecuteDownloadMultipleResults, CanExecuteDownloadMultipleResults);
             ExportForEmailCommand = new RelayCommand(ExecuteExportForEmail, CanExecuteExportForEmail);
             ExportMultipleForEmailCommand = new RelayCommand(ExecuteExportMultipleForEmail, CanExecuteExportMultipleForEmail);
             RefreshRacesCommand = new RelayCommand(ExecuteRefreshRaces);
@@ -155,7 +158,6 @@ namespace NameParser.UI.ViewModels
                 SetProperty(ref _selectedRace, value);
                 ((RelayCommand)DeleteRaceCommand).RaiseCanExecuteChanged();
                 ((RelayCommand)ViewClassificationCommand).RaiseCanExecuteChanged();
-                ((RelayCommand)DownloadResultCommand).RaiseCanExecuteChanged();
                 ((RelayCommand)ExportForEmailCommand).RaiseCanExecuteChanged();
                 ((RelayCommand)ReprocessRaceCommand).RaiseCanExecuteChanged();
             }
@@ -168,6 +170,7 @@ namespace NameParser.UI.ViewModels
             {
                 SetProperty(ref _selectedRaces, value);
                 ((RelayCommand)ExportMultipleForEmailCommand).RaiseCanExecuteChanged();
+                ((RelayCommand)DownloadMultipleResultsCommand).RaiseCanExecuteChanged();
             }
         }
 
@@ -235,7 +238,7 @@ namespace NameParser.UI.ViewModels
         public ICommand UploadFileCommand { get; }
         public ICommand ProcessRaceCommand { get; }
         public ICommand ReprocessRaceCommand { get; }
-        public ICommand DownloadResultCommand { get; }
+        public ICommand DownloadMultipleResultsCommand { get; }
         public ICommand ExportForEmailCommand { get; }
         public ICommand ExportMultipleForEmailCommand { get; }
         public ICommand RefreshRacesCommand { get; }
@@ -492,83 +495,598 @@ namespace NameParser.UI.ViewModels
             }
         }
 
-        private bool CanExecuteDownloadResult(object parameter)
+        private bool CanExecuteExportForEmail(object parameter)
         {
-            return SelectedRace != null;
+            return SelectedRace != null && SelectedRace.Status == "Processed";
         }
 
-        private void ExecuteDownloadResult(object parameter)
+        private bool CanExecuteDownloadMultipleResults(object parameter)
         {
-            if (SelectedRace == null) return;
+            return SelectedRaces != null && 
+                   SelectedRaces.Count > 0 && 
+                   SelectedRaces.OfType<RaceEntity>().All(r => r.Status == "Processed");
+        }
+
+        private void ExecuteDownloadMultipleResults(object parameter)
+        {
+            if (SelectedRaces == null || SelectedRaces.Count == 0) return;
+
+            var races = SelectedRaces.OfType<RaceEntity>().OrderBy(r => r.Year).ThenBy(r => r.RaceNumber).ToList();
 
             try
             {
+                // Ask user to select export format
+                var formatDialog = new Window
+                {
+                    Title = "Select Export Format",
+                    Width = 400,
+                    Height = 250,
+                    WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                    ResizeMode = ResizeMode.NoResize
+                };
+
+                var panel = new System.Windows.Controls.StackPanel { Margin = new Thickness(20) };
+
+                panel.Children.Add(new System.Windows.Controls.TextBlock 
+                { 
+                    Text = "Choose the export format for the race results:",
+                    FontSize = 14,
+                    Margin = new Thickness(0, 0, 0, 15),
+                    TextWrapping = TextWrapping.Wrap
+                });
+
+                var docxButton = new System.Windows.Controls.Button 
+                { 
+                    Content = "Word Document (.docx) - Formatted Document", 
+                    Margin = new Thickness(0, 5, 0, 5),
+                    Padding = new Thickness(10, 8, 10, 8),
+                    Tag = "docx",
+                    Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(33, 150, 243)),
+                    Foreground = System.Windows.Media.Brushes.White
+                };
+
+                var csvButton = new System.Windows.Controls.Button 
+                { 
+                    Content = "CSV File (.csv) - Excel Compatible", 
+                    Margin = new Thickness(0, 5, 0, 5),
+                    Padding = new Thickness(10, 8, 10, 8),
+                    Tag = "csv"
+                };
+
+                var txtButton = new System.Windows.Controls.Button 
+                { 
+                    Content = "Text File (.txt) - Plain Text", 
+                    Margin = new Thickness(0, 5, 0, 5),
+                    Padding = new Thickness(10, 8, 10, 8),
+                    Tag = "txt"
+                };
+
+                var cancelButton = new System.Windows.Controls.Button 
+                { 
+                    Content = "Cancel", 
+                    Margin = new Thickness(0, 15, 0, 0),
+                    Padding = new Thickness(10, 8, 10, 8),
+                    Tag = "cancel"
+                };
+
+                string selectedFormat = null;
+
+                docxButton.Click += (s, e) => { selectedFormat = "docx"; formatDialog.Close(); };
+                csvButton.Click += (s, e) => { selectedFormat = "csv"; formatDialog.Close(); };
+                txtButton.Click += (s, e) => { selectedFormat = "txt"; formatDialog.Close(); };
+                cancelButton.Click += (s, e) => { formatDialog.Close(); };
+
+                panel.Children.Add(docxButton);
+                panel.Children.Add(csvButton);
+                panel.Children.Add(txtButton);
+                panel.Children.Add(cancelButton);
+
+                formatDialog.Content = panel;
+                formatDialog.ShowDialog();
+
+                if (string.IsNullOrEmpty(selectedFormat))
+                    return;
+
+                // Set up save file dialog based on format
                 var saveFileDialog = new SaveFileDialog
                 {
-                    Filter = "Text Files (*.txt)|*.txt|CSV Files (*.csv)|*.csv|All Files (*.*)|*.*",
-                    FileName = $"Race_{SelectedRace.Year ?? 0}_{SelectedRace.RaceNumber}_{SelectedRace.Name}_Results.txt",
-                    Title = Localization["SaveResultAs"]
+                    Title = "Save Race Results"
                 };
+
+                if (selectedFormat == "txt")
+                {
+                    saveFileDialog.Filter = "Text Files (*.txt)|*.txt";
+                    saveFileDialog.FileName = $"Multiple_Races_{races.Count}_races_{DateTime.Now:yyyyMMdd}.txt";
+                }
+                else if (selectedFormat == "docx")
+                {
+                    saveFileDialog.Filter = "Word Document (*.docx)|*.docx";
+                    saveFileDialog.FileName = $"Multiple_Races_{races.Count}_races_{DateTime.Now:yyyyMMdd}.docx";
+                }
+                else if (selectedFormat == "csv")
+                {
+                    saveFileDialog.Filter = "CSV Files (*.csv)|*.csv";
+                    saveFileDialog.FileName = $"Multiple_Races_{races.Count}_races_{DateTime.Now:yyyyMMdd}.csv";
+                }
 
                 if (saveFileDialog.ShowDialog() == true)
                 {
-                    // Apply the current filter when exporting
-                    var classifications = _classificationRepository.GetClassificationsByRace(SelectedRace.Id, IsMemberFilter, IsChallengerFilter);
-
-                    using (var writer = new StreamWriter(saveFileDialog.FileName))
+                    if (selectedFormat == "txt")
                     {
-                        writer.WriteLine($"{Localization["Race"]}: {SelectedRace.Name}");
-                        writer.WriteLine($"{Localization["Year"]}: {(SelectedRace.Year.HasValue ? SelectedRace.Year.ToString() : Localization["HorsChallenge"])}");
-                        writer.WriteLine($"{Localization["RaceNumber"]}: {SelectedRace.RaceNumber}");
-                        writer.WriteLine($"{Localization["Distance"]}: {SelectedRace.DistanceKm} km");
-                        writer.WriteLine($"{Localization["ProcessedDate"]}: {SelectedRace.ProcessedDate}");
-
-                        // Show filter status in export
-                        if (IsMemberFilter.HasValue || IsChallengerFilter.HasValue)
-                        {
-                            var filters = new List<string>();
-                            if (IsMemberFilter.HasValue)
-                            {
-                                filters.Add(IsMemberFilter.Value ? Localization["MembersOnly"] : Localization["NonMembersOnly"]);
-                            }
-                            if (IsChallengerFilter.HasValue)
-                            {
-                                filters.Add(IsChallengerFilter.Value ? Localization["ChallengersOnly"] : Localization["NonChallengersOnly"]);
-                            }
-                            writer.WriteLine($"{Localization["FilterApplied"]} {string.Join(", ", filters)} {Localization["WinnerAlwaysShown"]}");
-                        }
-                        else
-                        {
-                            writer.WriteLine($"{Localization["FilterApplied"]} {Localization["AllParticipants"]}");
-                        }
-
-                        writer.WriteLine(new string('-', 80));
-                        writer.WriteLine($"{Localization["Rank"],-6}{Localization["FirstName"] + " " + Localization["LastName"],-30}{Localization["Points"],-10}{Localization["BonusKM"],-10}");
-                        writer.WriteLine(new string('-', 80));
-
-                        int rank = 1;
-                        foreach (var classification in classifications)
-                        {
-                            string fullName = $"{classification.MemberFirstName} {classification.MemberLastName}";
-                            writer.WriteLine($"{rank,-6}{fullName,-30}{classification.Points,-10}{classification.BonusKm,-10}");
-                            rank++;
-                        }
+                        ExportMultipleRacesForEmail(saveFileDialog.FileName, races);
+                    }
+                    else if (selectedFormat == "docx")
+                    {
+                        ExportMultipleRacesToDocx(saveFileDialog.FileName, races);
+                    }
+                    else if (selectedFormat == "csv")
+                    {
+                        ExportMultipleRacesToCsv(saveFileDialog.FileName, races);
                     }
 
-                    StatusMessage = string.Format(Localization["ResultsSavedTo"], saveFileDialog.FileName);
-                    MessageBox.Show(Localization["ExportSuccess"], Localization["ExportComplete"], MessageBoxButton.OK, MessageBoxImage.Information);
+                    StatusMessage = $"Exported {races.Count} races to: {saveFileDialog.FileName}";
+                    MessageBox.Show($"Successfully exported {races.Count} races!\n\nFile saved to:\n{saveFileDialog.FileName}", 
+                        "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
             catch (Exception ex)
             {
-                StatusMessage = string.Format(Localization["ErrorSaving"], ex.Message);
-                MessageBox.Show(string.Format(Localization["ErrorSaving"], ex.Message), Localization["Error"], MessageBoxButton.OK, MessageBoxImage.Error);
+                StatusMessage = $"Error exporting multiple races: {ex.Message}";
+                MessageBox.Show($"Error exporting multiple races: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
-        private bool CanExecuteExportForEmail(object parameter)
+        private void ExportMultipleRacesForEmail(string filePath, List<RaceEntity> races)
         {
-            return SelectedRace != null && SelectedRace.Status == "Processed";
+            using (var writer = new StreamWriter(filePath))
+            {
+                writer.WriteLine(new string('=', 80));
+                writer.WriteLine($"                     {Localization["MultipleRaceResultsExport"].ToUpper()}");
+                writer.WriteLine(new string('=', 80));
+                writer.WriteLine();
+
+                // Summary
+                writer.WriteLine(Localization["ExportSummary"].ToUpper());
+                writer.WriteLine($"{Localization["TotalRaces"]}: {races.Count}");
+                writer.WriteLine($"{Localization["Years"]}: {string.Join(", ", races.Select(r => r.Year.HasValue ? r.Year.ToString() : "HC").Distinct())}");
+                writer.WriteLine($"{Localization["TotalDistance"]}: {races.Sum(r => r.DistanceKm)} km");
+                writer.WriteLine($"{Localization["Exported"]}: {DateTime.Now:yyyy-MM-dd HH:mm}");
+                writer.WriteLine();
+
+                // Show filter info
+                if (IsMemberFilter.HasValue || IsChallengerFilter.HasValue)
+                {
+                    var filters = new List<string>();
+                    if (IsMemberFilter.HasValue)
+                    {
+                        filters.Add(IsMemberFilter.Value ? Localization["MembersOnly"] : Localization["NonMembersOnly"]);
+                    }
+                    if (IsChallengerFilter.HasValue)
+                    {
+                        filters.Add(IsChallengerFilter.Value ? Localization["ChallengersOnly"] : Localization["NonChallengersOnly"]);
+                    }
+                    writer.WriteLine($"** {Localization["FilterApplied"].ToUpper()}: {string.Join(", ", filters)} ({Localization["WinnerAlwaysIncluded"]})");
+                    writer.WriteLine();
+                }
+
+                writer.WriteLine(new string('=', 150));
+
+                // Process each race
+                int totalParticipants = 0;
+                int raceCount = 0;
+                foreach (var race in races)
+                {
+                    raceCount++;
+                    var classifications = _classificationRepository.GetClassificationsByRace(race.Id, IsMemberFilter, IsChallengerFilter);
+                    totalParticipants += classifications.Count;
+
+                    writer.WriteLine();
+                    writer.WriteLine($"{Localization["Race"].ToUpper()} {raceCount}/{races.Count}: {race.Name.ToUpper()}");
+                    writer.WriteLine($"{Localization["Year"]}: {(race.Year.HasValue ? race.Year.ToString() : Localization["HorsChallenge"])} | {Localization["Distance"]}: {race.DistanceKm} km | {Localization["Race"]} #{race.RaceNumber} | {Localization["Participants"]}: {classifications.Count}");
+                    writer.WriteLine(new string('-', 150));
+
+                    // Build dynamic header based on available data
+                    var headerParts = new List<string>();
+                    headerParts.Add($"{Localization["Rank"],-7}| ");
+                    headerParts.Add($"{Localization["Position"],-5}| ");
+                    headerParts.Add($"{Localization["Name"],-30}| ");
+
+                    // Check if any classification has these optional fields
+                    bool hasTeam = classifications.Any(c => !string.IsNullOrWhiteSpace(c.Team));
+                    bool hasRaceTime = classifications.Any(c => c.RaceTime.HasValue);
+                    bool hasTimePerKm = classifications.Any(c => c.TimePerKm.HasValue);
+                    bool hasSpeed = classifications.Any(c => c.Speed.HasValue);
+                    bool hasSex = classifications.Any(c => !string.IsNullOrWhiteSpace(c.Sex));
+                    bool hasPositionBySex = classifications.Any(c => c.PositionBySex.HasValue);
+                    bool hasAgeCategory = classifications.Any(c => !string.IsNullOrWhiteSpace(c.AgeCategory));
+                    bool hasPositionByCategory = classifications.Any(c => c.PositionByCategory.HasValue);
+
+                    if (hasTeam) headerParts.Add($"{Localization["Team"],-20}| ");
+                    if (hasRaceTime) headerParts.Add($"{Localization["RaceTime"],-10}| ");
+                    if (hasTimePerKm) headerParts.Add($"{Localization["TimePerKm"],-8}| ");
+                    if (hasSpeed) headerParts.Add($"{Localization["Speed"],-8}| ");
+                    if (hasSex) headerParts.Add($"{Localization["Sex"],-5}| ");
+                    if (hasPositionBySex) headerParts.Add($"{Localization["PositionBySex"],-6}| ");
+                    if (hasAgeCategory) headerParts.Add($"{Localization["AgeCategory"],-15}| ");
+                    if (hasPositionByCategory) headerParts.Add($"{Localization["PositionByCategory"],-6}");
+
+                    writer.WriteLine(string.Join("", headerParts));
+                    writer.WriteLine(new string('-', 150));
+
+                    int rank = 1;
+                    foreach (var classification in classifications)
+                    {
+                        var rowParts = new List<string>();
+                        string marker = classification.Position == 1 ? "[W]" : (classification.IsMember ? "[M]" : "   ");
+                        rowParts.Add($"{marker}{rank,-4}| ");
+                        rowParts.Add($"{classification.Position,-5}| ");
+
+                        string fullName = $"{classification.MemberFirstName} {classification.MemberLastName}";
+                        rowParts.Add($"{fullName,-30}| ");
+
+                        if (hasTeam) rowParts.Add($"{(classification.Team ?? "-"),-20}| ");
+                        if (hasRaceTime) rowParts.Add($"{(classification.RaceTime.HasValue ? FormatTimeSpan(classification.RaceTime) : "-"),-10}| ");
+                        if (hasTimePerKm) rowParts.Add($"{(classification.TimePerKm.HasValue ? FormatTimeSpan(classification.TimePerKm) : "-"),-8}| ");
+                        if (hasSpeed) rowParts.Add($"{(classification.Speed.HasValue ? classification.Speed.Value.ToString("F2") : "-"),-8}| ");
+                        if (hasSex) rowParts.Add($"{(classification.Sex ?? "-"),-5}| ");
+                        if (hasPositionBySex) rowParts.Add($"{(classification.PositionBySex?.ToString() ?? "-"),-6}| ");
+                        if (hasAgeCategory) rowParts.Add($"{(classification.AgeCategory ?? "-"),-15}| ");
+                        if (hasPositionByCategory) rowParts.Add($"{(classification.PositionByCategory?.ToString() ?? "-"),-6}");
+
+                        writer.WriteLine(string.Join("", rowParts));
+                        rank++;
+                    }
+
+                    writer.WriteLine(new string('-', 150));
+
+                    if (raceCount < races.Count)
+                    {
+                        writer.WriteLine();
+                        writer.WriteLine(new string('=', 150));
+                    }
+                }
+
+                // Final summary
+                writer.WriteLine();
+                writer.WriteLine(new string('=', 150));
+                writer.WriteLine();
+                writer.WriteLine(Localization["CompleteExportSummary"].ToUpper());
+                writer.WriteLine($"{Localization["TotalRaces"]}: {races.Count} | {Localization["TotalParticipantsAllRaces"]}: {totalParticipants}");
+                writer.WriteLine($"{Localization["Generated"]}: {DateTime.Now:yyyy-MM-dd HH:mm}");
+                writer.WriteLine();
+                writer.WriteLine($"{Localization["Legend"]}: [W] = {Localization["Winner"]} | [M] = {Localization["ClubMember"]}");
+            }
+        }
+
+        private void ExportMultipleRacesToCsv(string filePath, List<RaceEntity> races)
+        {
+            using (var writer = new StreamWriter(filePath, false, System.Text.Encoding.UTF8))
+            {
+                // Process each race
+                foreach (var race in races)
+                {
+                    var classifications = _classificationRepository.GetClassificationsByRace(race.Id, IsMemberFilter, IsChallengerFilter);
+
+                    // Race header section
+                    writer.WriteLine($"\"{Localization["Race"]}\",\"{race.Name}\"");
+                    writer.WriteLine($"\"{Localization["Year"]}\",\"{(race.Year.HasValue ? race.Year.ToString() : Localization["HorsChallenge"])}\"");
+                    writer.WriteLine($"\"{Localization["Distance"]}\",\"{race.DistanceKm} km\"");
+                    writer.WriteLine($"\"{Localization["RaceNumber"]}\",\"{race.RaceNumber}\"");
+                    writer.WriteLine($"\"{Localization["Participants"]}\",\"{classifications.Count}\"");
+                    writer.WriteLine(); // Empty line
+
+                    // Check if any classification has these optional fields
+                    bool hasTeam = classifications.Any(c => !string.IsNullOrWhiteSpace(c.Team));
+                    bool hasRaceTime = classifications.Any(c => c.RaceTime.HasValue);
+                    bool hasTimePerKm = classifications.Any(c => c.TimePerKm.HasValue);
+                    bool hasSpeed = classifications.Any(c => c.Speed.HasValue);
+                    bool hasSex = classifications.Any(c => !string.IsNullOrWhiteSpace(c.Sex));
+                    bool hasPositionBySex = classifications.Any(c => c.PositionBySex.HasValue);
+                    bool hasAgeCategory = classifications.Any(c => !string.IsNullOrWhiteSpace(c.AgeCategory));
+                    bool hasPositionByCategory = classifications.Any(c => c.PositionByCategory.HasValue);
+
+                    // CSV Header with all available columns
+                    var headers = new List<string> { Localization["Rank"], Localization["Position"], Localization["FirstName"], Localization["LastName"] };
+                    if (hasTeam) headers.Add(Localization["Team"]);
+                    if (hasRaceTime) headers.Add(Localization["RaceTime"]);
+                    if (hasTimePerKm) headers.Add(Localization["TimePerKm"]);
+                    if (hasSpeed) headers.Add(Localization["Speed"]);
+                    if (hasSex) headers.Add(Localization["Sex"]);
+                    if (hasPositionBySex) headers.Add(Localization["PositionBySex"]);
+                    if (hasAgeCategory) headers.Add(Localization["AgeCategory"]);
+                    if (hasPositionByCategory) headers.Add(Localization["PositionByCategory"]);
+
+                    writer.WriteLine(string.Join(",", headers.Select(h => $"\"{h}\"")));
+
+                    // Data rows
+                    int rank = 1;
+                    foreach (var classification in classifications)
+                    {
+                        var row = new List<string>
+                        {
+                            rank.ToString(),
+                            classification.Position.ToString(),
+                            $"\"{classification.MemberFirstName}\"",
+                            $"\"{classification.MemberLastName}\""
+                        };
+
+                        if (hasTeam) row.Add($"\"{classification.Team ?? ""}\"");
+                        if (hasRaceTime) row.Add($"\"{(classification.RaceTime.HasValue ? FormatTimeSpan(classification.RaceTime) : "")}\"");
+                        if (hasTimePerKm) row.Add($"\"{(classification.TimePerKm.HasValue ? FormatTimeSpan(classification.TimePerKm) : "")}\"");
+                        if (hasSpeed) row.Add(classification.Speed.HasValue ? classification.Speed.Value.ToString("F2") : "");
+                        if (hasSex) row.Add($"\"{classification.Sex ?? ""}\"");
+                        if (hasPositionBySex) row.Add(classification.PositionBySex?.ToString() ?? "");
+                        if (hasAgeCategory) row.Add($"\"{classification.AgeCategory ?? ""}\"");
+                        if (hasPositionByCategory) row.Add(classification.PositionByCategory?.ToString() ?? "");
+
+                        writer.WriteLine(string.Join(",", row));
+                        rank++;
+                    }
+
+                    // Add spacing between races
+                    writer.WriteLine();
+                    writer.WriteLine();
+                }
+
+                // Summary section at the end
+                writer.WriteLine($"\"{Localization["ExportSummary"].ToUpper()}\"");
+                writer.WriteLine($"\"{Localization["TotalRaces"]}\",\"{races.Count}\"");
+                writer.WriteLine($"\"{Localization["TotalParticipantsAllRaces"]}\",\"{races.Sum(r => _classificationRepository.GetClassificationsByRace(r.Id, IsMemberFilter, IsChallengerFilter).Count)}\"");
+                writer.WriteLine($"\"{Localization["Generated"]}\",\"{DateTime.Now:yyyy-MM-dd HH:mm}\"");
+            }
+        }
+
+        private void ExportMultipleRacesToDocx(string filePath, List<RaceEntity> races)
+        {
+            using (WordprocessingDocument wordDocument = WordprocessingDocument.Create(filePath, WordprocessingDocumentType.Document))
+            {
+                // Add a main document part
+                MainDocumentPart mainPart = wordDocument.AddMainDocumentPart();
+                mainPart.Document = new Document();
+                Body body = mainPart.Document.AppendChild(new Body());
+
+                // Title
+                Paragraph title = body.AppendChild(new Paragraph());
+                Run titleRun = title.AppendChild(new Run());
+                titleRun.AppendChild(new Text(Localization["MultipleRaceResultsExport"].ToUpper()));
+                ApplyParagraphFormatting(title, true, true, 32);
+
+                // Date
+                Paragraph date = body.AppendChild(new Paragraph());
+                Run dateRun = date.AppendChild(new Run());
+                dateRun.AppendChild(new Text(DateTime.Now.ToString("yyyy-MM-dd HH:mm")));
+                ApplyParagraphFormatting(date, false, true, 24);
+
+                // Summary Box
+                body.AppendChild(CreateSummaryParagraph(Localization["ExportSummary"]));
+                body.AppendChild(CreateSummaryParagraph($"{Localization["TotalRaces"]}: {races.Count}"));
+                body.AppendChild(CreateSummaryParagraph($"{Localization["Years"]}: {string.Join(", ", races.Select(r => r.Year.HasValue ? r.Year.ToString() : "HC").Distinct())}"));
+                body.AppendChild(CreateSummaryParagraph($"{Localization["TotalDistance"]}: {races.Sum(r => r.DistanceKm)} km"));
+
+                // Filter info
+                if (IsMemberFilter.HasValue || IsChallengerFilter.HasValue)
+                {
+                    var filters = new List<string>();
+                    if (IsMemberFilter.HasValue)
+                        filters.Add(IsMemberFilter.Value ? Localization["MembersOnly"] : Localization["NonMembersOnly"]);
+                    if (IsChallengerFilter.HasValue)
+                        filters.Add(IsChallengerFilter.Value ? Localization["ChallengersOnly"] : Localization["NonChallengersOnly"]);
+
+                    body.AppendChild(CreateSummaryParagraph($"{Localization["FilterApplied"]}: {string.Join(", ", filters)} ({Localization["WinnerAlwaysIncluded"]})"));
+                }
+
+                body.AppendChild(new Paragraph()); // Empty line
+
+                // Process each race
+                int raceCount = 0;
+                int totalParticipants = 0;
+                foreach (var race in races)
+                {
+                    raceCount++;
+                    var classifications = _classificationRepository.GetClassificationsByRace(race.Id, IsMemberFilter, IsChallengerFilter);
+                    totalParticipants += classifications.Count;
+
+                    // Add page break if not first race
+                    if (raceCount > 1)
+                    {
+                        Paragraph pageBreak = body.AppendChild(new Paragraph());
+                        pageBreak.AppendChild(new Run(new Break() { Type = BreakValues.Page }));
+                    }
+
+                    // Race Header
+                    Paragraph raceHeader = body.AppendChild(new Paragraph());
+                    Run raceHeaderRun = raceHeader.AppendChild(new Run());
+                    raceHeaderRun.AppendChild(new Text($"{Localization["Race"]} {raceCount}/{races.Count}: {race.Name.ToUpper()}"));
+                    ApplyParagraphFormatting(raceHeader, true, false, 28);
+                    ApplyRunColor(raceHeaderRun, "2196F3"); // Blue
+
+                    // Race Info
+                    Paragraph raceInfo = body.AppendChild(new Paragraph());
+                    Run raceInfoRun = raceInfo.AppendChild(new Run());
+                    raceInfoRun.AppendChild(new Text($"{Localization["Year"]}: {(race.Year.HasValue ? race.Year.ToString() : Localization["HorsChallenge"])} | {Localization["Distance"]}: {race.DistanceKm} km | {Localization["Race"]} #{race.RaceNumber} | {Localization["Participants"]}: {classifications.Count}"));
+
+                    body.AppendChild(new Paragraph()); // Empty line
+
+                    // Check for optional fields
+                    bool hasTeam = classifications.Any(c => !string.IsNullOrWhiteSpace(c.Team));
+                    bool hasRaceTime = classifications.Any(c => c.RaceTime.HasValue);
+                    bool hasTimePerKm = classifications.Any(c => c.TimePerKm.HasValue);
+                    bool hasSpeed = classifications.Any(c => c.Speed.HasValue);
+                    bool hasSex = classifications.Any(c => !string.IsNullOrWhiteSpace(c.Sex));
+                    bool hasPositionBySex = classifications.Any(c => c.PositionBySex.HasValue);
+                    bool hasAgeCategory = classifications.Any(c => !string.IsNullOrWhiteSpace(c.AgeCategory));
+                    bool hasPositionByCategory = classifications.Any(c => c.PositionByCategory.HasValue);
+
+                    // Create table
+                    Table table = new Table();
+
+                    // Table properties
+                    TableProperties tblProps = new TableProperties(
+                        new TableBorders(
+                            new TopBorder() { Val = new EnumValue<BorderValues>(BorderValues.Single), Size = 4 },
+                            new BottomBorder() { Val = new EnumValue<BorderValues>(BorderValues.Single), Size = 4 },
+                            new LeftBorder() { Val = new EnumValue<BorderValues>(BorderValues.Single), Size = 4 },
+                            new RightBorder() { Val = new EnumValue<BorderValues>(BorderValues.Single), Size = 4 },
+                            new InsideHorizontalBorder() { Val = new EnumValue<BorderValues>(BorderValues.Single), Size = 4 },
+                            new InsideVerticalBorder() { Val = new EnumValue<BorderValues>(BorderValues.Single), Size = 4 }),
+                        new TableWidth() { Width = "5000", Type = TableWidthUnitValues.Pct });
+                    table.AppendChild(tblProps);
+
+                    // Table header row
+                    TableRow headerRow = new TableRow();
+                    headerRow.Append(CreateHeaderCell(Localization["Rank"]));
+                    headerRow.Append(CreateHeaderCell(Localization["Position"]));
+                    headerRow.Append(CreateHeaderCell(Localization["FirstName"]));
+                    headerRow.Append(CreateHeaderCell(Localization["LastName"]));
+                    if (hasTeam) headerRow.Append(CreateHeaderCell(Localization["Team"]));
+                    if (hasRaceTime) headerRow.Append(CreateHeaderCell(Localization["RaceTime"]));
+                    if (hasTimePerKm) headerRow.Append(CreateHeaderCell(Localization["TimePerKm"]));
+                    if (hasSpeed) headerRow.Append(CreateHeaderCell(Localization["Speed"]));
+                    if (hasSex) headerRow.Append(CreateHeaderCell(Localization["Sex"]));
+                    if (hasPositionBySex) headerRow.Append(CreateHeaderCell(Localization["PositionBySex"]));
+                    if (hasAgeCategory) headerRow.Append(CreateHeaderCell(Localization["AgeCategory"]));
+                    if (hasPositionByCategory) headerRow.Append(CreateHeaderCell(Localization["PositionByCategory"]));
+                    table.Append(headerRow);
+
+                    // Data rows
+                    int rank = 1;
+                    foreach (var classification in classifications)
+                    {
+                        TableRow dataRow = new TableRow();
+                        bool isWinner = classification.Position == 1;
+
+                        dataRow.Append(CreateDataCell(rank.ToString(), isWinner));
+                        dataRow.Append(CreateDataCell(classification.Position.ToString(), isWinner));
+                        dataRow.Append(CreateDataCell(classification.MemberFirstName, isWinner));
+                        dataRow.Append(CreateDataCell(classification.MemberLastName, isWinner));
+                        if (hasTeam) dataRow.Append(CreateDataCell(classification.Team ?? "-", isWinner));
+                        if (hasRaceTime) dataRow.Append(CreateDataCell(classification.RaceTime.HasValue ? FormatTimeSpan(classification.RaceTime) : "-", isWinner));
+                        if (hasTimePerKm) dataRow.Append(CreateDataCell(classification.TimePerKm.HasValue ? FormatTimeSpan(classification.TimePerKm) : "-", isWinner));
+                        if (hasSpeed) dataRow.Append(CreateDataCell(classification.Speed.HasValue ? classification.Speed.Value.ToString("F2") : "-", isWinner));
+                        if (hasSex) dataRow.Append(CreateDataCell(classification.Sex ?? "-", isWinner));
+                        if (hasPositionBySex) dataRow.Append(CreateDataCell(classification.PositionBySex?.ToString() ?? "-", isWinner));
+                        if (hasAgeCategory) dataRow.Append(CreateDataCell(classification.AgeCategory ?? "-", isWinner));
+                        if (hasPositionByCategory) dataRow.Append(CreateDataCell(classification.PositionByCategory?.ToString() ?? "-", isWinner));
+
+                        table.Append(dataRow);
+                        rank++;
+                    }
+
+                    body.Append(table);
+                    body.AppendChild(new Paragraph()); // Empty line
+                }
+
+                // Final Summary
+                body.AppendChild(CreateSummaryParagraph(Localization["ExportComplete"].ToUpper(), true));
+                body.AppendChild(CreateSummaryParagraph($"{Localization["TotalRaces"]}: {races.Count} | {Localization["TotalParticipantsAllRaces"]}: {totalParticipants}"));
+                body.AppendChild(CreateSummaryParagraph($"{Localization["Generated"]}: {DateTime.Now:yyyy-MM-dd HH:mm}"));
+
+                mainPart.Document.Save();
+            }
+        }
+
+        private Paragraph CreateSummaryParagraph(string text, bool isBold = false)
+        {
+            Paragraph para = new Paragraph();
+            Run run = para.AppendChild(new Run());
+            run.AppendChild(new Text(text));
+            if (isBold)
+            {
+                run.RunProperties = new RunProperties(new Bold());
+            }
+            return para;
+        }
+
+        private void ApplyParagraphFormatting(Paragraph paragraph, bool isBold, bool isCentered, int fontSize)
+        {
+            ParagraphProperties paragraphProperties = new ParagraphProperties();
+
+            if (isCentered)
+            {
+                paragraphProperties.Append(new Justification() { Val = JustificationValues.Center });
+            }
+
+            paragraph.ParagraphProperties = paragraphProperties;
+
+            if (paragraph.Elements<Run>().Any())
+            {
+                RunProperties runProperties = new RunProperties();
+                if (isBold)
+                {
+                    runProperties.Append(new Bold());
+                }
+                runProperties.Append(new FontSize() { Val = fontSize.ToString() });
+
+                foreach (var run in paragraph.Elements<Run>())
+                {
+                    run.RunProperties = (RunProperties)runProperties.CloneNode(true);
+                }
+            }
+        }
+
+        private void ApplyRunColor(Run run, string hexColor)
+        {
+            if (run.RunProperties == null)
+            {
+                run.RunProperties = new RunProperties();
+            }
+            run.RunProperties.Append(new Color() { Val = hexColor });
+        }
+
+        private TableCell CreateHeaderCell(string text)
+        {
+            TableCell cell = new TableCell();
+
+            // Cell properties with blue background
+            TableCellProperties cellProperties = new TableCellProperties(
+                new Shading() 
+                { 
+                    Val = ShadingPatternValues.Clear, 
+                    Fill = "2196F3" 
+                });
+            cell.Append(cellProperties);
+
+            // Paragraph with white text
+            Paragraph para = cell.AppendChild(new Paragraph());
+            Run run = para.AppendChild(new Run());
+            run.AppendChild(new Text(text));
+
+            // Format: Bold and white color
+            RunProperties runProps = new RunProperties(
+                new Bold(),
+                new Color() { Val = "FFFFFF" }
+            );
+            run.RunProperties = runProps;
+
+            return cell;
+        }
+
+        private TableCell CreateDataCell(string text, bool isWinner)
+        {
+            TableCell cell = new TableCell();
+
+            // Apply gold background for winners
+            if (isWinner)
+            {
+                TableCellProperties cellProperties = new TableCellProperties(
+                    new Shading() 
+                    { 
+                        Val = ShadingPatternValues.Clear, 
+                        Fill = "FFD700" // Gold color
+                    });
+                cell.Append(cellProperties);
+            }
+
+            Paragraph para = cell.AppendChild(new Paragraph());
+            Run run = para.AppendChild(new Run());
+            run.AppendChild(new Text(text));
+
+            if (isWinner)
+            {
+                run.RunProperties = new RunProperties(new Bold());
+            }
+
+            return cell;
         }
 
         private void ExecuteExportForEmail(object parameter)
