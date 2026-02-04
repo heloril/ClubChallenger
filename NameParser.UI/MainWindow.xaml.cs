@@ -30,5 +30,15 @@ namespace NameParser.UI
                 button.ContextMenu.IsOpen = true;
             }
         }
+
+        private void ChallengerExportButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Open the context menu when the button is clicked
+            if (sender is Button button && button.ContextMenu != null)
+            {
+                button.ContextMenu.PlacementTarget = button;
+                button.ContextMenu.IsOpen = true;
+            }
+        }
     }
 }

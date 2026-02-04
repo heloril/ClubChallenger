@@ -417,8 +417,52 @@
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
                                 <Button Content="{Binding Localization[LoadChallengers]}" Command="{Binding ViewChallengerClassificationCommand}" Margin="10,0,10,0"/>
-                                <Button Content="📱 Share to Facebook" Command="{Binding ShareChallengeToFacebookCommand}" Background="#1877F2" Foreground="White" Margin="0,0,10,0" ToolTip="Share challenge standings to Facebook page"/>
-                                <Button Content="{Binding Localization[Export]}" Command="{Binding ExportChallengerClassificationCommand}" Background="#FF9800" Foreground="White"/>
+
+                                <!-- Export Menu Button -->
+                                <Button Content="📤 Export ▼" Background="#FF9800" Foreground="White" Margin="0,0,10,0" ToolTip="Export challenger classification">
+                                    <Button.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="📊 Summary (HTML)" Command="{Binding ExportChallengerSummaryHtmlCommand}">
+                                                <MenuItem.ToolTip>
+                                                    <TextBlock Text="Export summary with Name, Points, Races, and KMs only"/>
+                                                </MenuItem.ToolTip>
+                                            </MenuItem>
+                                            <MenuItem Header="📊 Summary (Excel)" Command="{Binding ExportChallengerSummaryExcelCommand}">
+                                                <MenuItem.ToolTip>
+                                                    <TextBlock Text="Export summary spreadsheet with basic statistics"/>
+                                                </MenuItem.ToolTip>
+                                            </MenuItem>
+                                            <MenuItem Header="📊 Summary (Word)" Command="{Binding ExportChallengerSummaryWordCommand}">
+                                                <MenuItem.ToolTip>
+                                                    <TextBlock Text="Export summary document for printing"/>
+                                                </MenuItem.ToolTip>
+                                            </MenuItem>
+                                            <Separator/>
+                                            <MenuItem Header="📋 Detailed (HTML)" Command="{Binding ExportChallengerDetailedHtmlCommand}">
+                                                <MenuItem.ToolTip>
+                                                    <TextBlock Text="Export complete view with race-by-race details"/>
+                                                </MenuItem.ToolTip>
+                                            </MenuItem>
+                                            <MenuItem Header="📋 Detailed (Excel)" Command="{Binding ExportChallengerDetailedExcelCommand}">
+                                                <MenuItem.ToolTip>
+                                                    <TextBlock Text="Export detailed spreadsheet with all race information"/>
+                                                </MenuItem.ToolTip>
+                                            </MenuItem>
+                                            <MenuItem Header="📋 Detailed (Word)" Command="{Binding ExportChallengerDetailedWordCommand}">
+                                                <MenuItem.ToolTip>
+                                                    <TextBlock Text="Export complete document with race-by-race breakdown"/>
+                                                </MenuItem.ToolTip>
+                                            </MenuItem>
+                                        </ContextMenu>
+                                    </Button.ContextMenu>
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                            <EventSetter Event="Click" Handler="ChallengerExportButton_Click"/>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+
+                                <Button Content="📱 Share to Facebook" Command="{Binding ShareChallengeToFacebookCommand}" Background="#1877F2" Foreground="White" ToolTip="Share challenge standings to Facebook page"/>
                             </StackPanel>
                             <TextBlock Text="Select a challenge to view the challenger rankings. Points are calculated from the best 7 races plus bonus kilometers." 
                                        FontStyle="Italic" 

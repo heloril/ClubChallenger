@@ -99,6 +99,14 @@ namespace NameParser.UI.ViewModels
             ViewChallengerClassificationCommand = new RelayCommand(ExecuteViewChallengerClassification);
             ExportChallengerClassificationCommand = new RelayCommand(ExecuteExportChallengerClassification, CanExecuteExportChallengerClassification);
 
+            // Challenger Classification Export commands
+            ExportChallengerSummaryHtmlCommand = new RelayCommand(ExecuteExportChallengerSummaryHtml, CanExecuteExportChallengerClassification);
+            ExportChallengerSummaryExcelCommand = new RelayCommand(ExecuteExportChallengerSummaryExcel, CanExecuteExportChallengerClassification);
+            ExportChallengerSummaryWordCommand = new RelayCommand(ExecuteExportChallengerSummaryWord, CanExecuteExportChallengerClassification);
+            ExportChallengerDetailedHtmlCommand = new RelayCommand(ExecuteExportChallengerDetailedHtml, CanExecuteExportChallengerClassification);
+            ExportChallengerDetailedExcelCommand = new RelayCommand(ExecuteExportChallengerDetailedExcel, CanExecuteExportChallengerClassification);
+            ExportChallengerDetailedWordCommand = new RelayCommand(ExecuteExportChallengerDetailedWord, CanExecuteExportChallengerClassification);
+
             // Export commands for Race Classification
             ExportToHtmlCommand = new RelayCommand(ExecuteExportToHtml, CanExecuteExport);
             ExportToExcelCommand = new RelayCommand(ExecuteExportToExcel, CanExecuteExport);
@@ -333,6 +341,15 @@ namespace NameParser.UI.ViewModels
         public ICommand ViewClassificationCommand { get; }
         public ICommand ViewChallengerClassificationCommand { get; }
         public ICommand ExportChallengerClassificationCommand { get; }
+
+        // Challenger Classification Export commands
+        public ICommand ExportChallengerSummaryHtmlCommand { get; }
+        public ICommand ExportChallengerSummaryExcelCommand { get; }
+        public ICommand ExportChallengerSummaryWordCommand { get; }
+        public ICommand ExportChallengerDetailedHtmlCommand { get; }
+        public ICommand ExportChallengerDetailedExcelCommand { get; }
+        public ICommand ExportChallengerDetailedWordCommand { get; }
+
         public ICommand ShowRaceClassificationCommand { get; }
         public ICommand ShowOnlyMembersCommand { get; }
         public ICommand ShowOnlyNonMembersCommand { get; }
@@ -3292,6 +3309,513 @@ namespace NameParser.UI.ViewModels
                 writer.WriteLine("Legend:");
                 writer.WriteLine("  👤 = Club Member");
                 writer.WriteLine("  ⭐ = Challenger");
+            }
+        }
+
+        // Challenger Classification Export Methods
+
+        private void ExecuteExportChallengerSummaryHtml(object parameter)
+        {
+            if (!CanExecuteExportChallengerClassification(parameter)) return;
+
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "HTML Files (*.html)|*.html|All Files (*.*)|*.*",
+                    DefaultExt = "html",
+                    FileName = $"{SelectedChallengeForClassification.Name.Replace(" ", "_")}_Summary_{DateTime.Now:yyyyMMdd}.html"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    ExportChallengerSummaryToHtml(saveFileDialog.FileName);
+                    StatusMessage = $"Summary exported to HTML: {Path.GetFileName(saveFileDialog.FileName)}";
+                    MessageBox.Show($"Summary exported successfully!\n\nFile: {saveFileDialog.FileName}",
+                        "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error exporting summary: {ex.Message}";
+                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExecuteExportChallengerSummaryExcel(object parameter)
+        {
+            if (!CanExecuteExportChallengerClassification(parameter)) return;
+
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "Excel Files (*.xlsx)|*.xlsx|All Files (*.*)|*.*",
+                    DefaultExt = "xlsx",
+                    FileName = $"{SelectedChallengeForClassification.Name.Replace(" ", "_")}_Summary_{DateTime.Now:yyyyMMdd}.xlsx"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    ExportChallengerSummaryToExcel(saveFileDialog.FileName);
+                    StatusMessage = $"Summary exported to Excel: {Path.GetFileName(saveFileDialog.FileName)}";
+                    MessageBox.Show($"Summary exported successfully!\n\nFile: {saveFileDialog.FileName}",
+                        "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error exporting summary: {ex.Message}";
+                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExecuteExportChallengerSummaryWord(object parameter)
+        {
+            if (!CanExecuteExportChallengerClassification(parameter)) return;
+
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "Word Documents (*.docx)|*.docx|All Files (*.*)|*.*",
+                    DefaultExt = "docx",
+                    FileName = $"{SelectedChallengeForClassification.Name.Replace(" ", "_")}_Summary_{DateTime.Now:yyyyMMdd}.docx"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    ExportChallengerSummaryToWord(saveFileDialog.FileName);
+                    StatusMessage = $"Summary exported to Word: {Path.GetFileName(saveFileDialog.FileName)}";
+                    MessageBox.Show($"Summary exported successfully!\n\nFile: {saveFileDialog.FileName}",
+                        "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error exporting summary: {ex.Message}";
+                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExecuteExportChallengerDetailedHtml(object parameter)
+        {
+            if (!CanExecuteExportChallengerClassification(parameter)) return;
+
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "HTML Files (*.html)|*.html|All Files (*.*)|*.*",
+                    DefaultExt = "html",
+                    FileName = $"{SelectedChallengeForClassification.Name.Replace(" ", "_")}_Detailed_{DateTime.Now:yyyyMMdd}.html"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    ExportChallengerClassificationToHtml(saveFileDialog.FileName, false); // false = detailed
+                    StatusMessage = $"Detailed view exported to HTML: {Path.GetFileName(saveFileDialog.FileName)}";
+                    MessageBox.Show($"Detailed view exported successfully!\n\nFile: {saveFileDialog.FileName}",
+                        "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error exporting detailed view: {ex.Message}";
+                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExecuteExportChallengerDetailedExcel(object parameter)
+        {
+            if (!CanExecuteExportChallengerClassification(parameter)) return;
+
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "Excel Files (*.xlsx)|*.xlsx|All Files (*.*)|*.*",
+                    DefaultExt = "xlsx",
+                    FileName = $"{SelectedChallengeForClassification.Name.Replace(" ", "_")}_Detailed_{DateTime.Now:yyyyMMdd}.xlsx"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    ExportChallengerDetailedToExcel(saveFileDialog.FileName);
+                    StatusMessage = $"Detailed view exported to Excel: {Path.GetFileName(saveFileDialog.FileName)}";
+                    MessageBox.Show($"Detailed view exported successfully!\n\nFile: {saveFileDialog.FileName}",
+                        "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error exporting detailed view: {ex.Message}";
+                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExecuteExportChallengerDetailedWord(object parameter)
+        {
+            if (!CanExecuteExportChallengerClassification(parameter)) return;
+
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "Word Documents (*.docx)|*.docx|All Files (*.*)|*.*",
+                    DefaultExt = "docx",
+                    FileName = $"{SelectedChallengeForClassification.Name.Replace(" ", "_")}_Detailed_{DateTime.Now:yyyyMMdd}.docx"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    ExportChallengerDetailedToWord(saveFileDialog.FileName);
+                    StatusMessage = $"Detailed view exported to Word: {Path.GetFileName(saveFileDialog.FileName)}";
+                    MessageBox.Show($"Detailed view exported successfully!\n\nFile: {saveFileDialog.FileName}",
+                        "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error exporting detailed view: {ex.Message}";
+                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        // Summary Export Implementations
+
+        private void ExportChallengerSummaryToHtml(string filePath)
+        {
+            var challengeName = SelectedChallengeForClassification?.Name ?? "Challenge";
+            var challengeYear = SelectedChallengeForClassification?.Year ?? SelectedYear;
+
+            using (var writer = new StreamWriter(filePath))
+            {
+                writer.WriteLine("<!DOCTYPE html>");
+                writer.WriteLine("<html>");
+                writer.WriteLine("<head>");
+                writer.WriteLine("    <meta charset='utf-8'>");
+                writer.WriteLine($"    <title>{challengeName} - Summary</title>");
+                writer.WriteLine("    <style>");
+                writer.WriteLine("        body { font-family: Arial, sans-serif; margin: 20px; }");
+                writer.WriteLine("        h1 { color: #FF9800; }");
+                writer.WriteLine("        table { border-collapse: collapse; width: 100%; margin-top: 20px; }");
+                writer.WriteLine("        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }");
+                writer.WriteLine("        th { background-color: #FF9800; color: white; font-weight: bold; }");
+                writer.WriteLine("        tr:nth-child(even) { background-color: #f2f2f2; }");
+                writer.WriteLine("        tr:hover { background-color: #FFE0B2; }");
+                writer.WriteLine("        .rank { font-weight: bold; font-size: 18px; color: #FF9800; }");
+                writer.WriteLine("        .summary { background-color: #FFF3E0; padding: 15px; margin: 20px 0; border-radius: 5px; }");
+                writer.WriteLine("    </style>");
+                writer.WriteLine("</head>");
+                writer.WriteLine("<body>");
+                writer.WriteLine($"    <h1>🏆 {challengeName} - Summary</h1>");
+                writer.WriteLine($"    <div class='summary'>");
+                writer.WriteLine($"        <strong>Year:</strong> {challengeYear}<br/>");
+                writer.WriteLine($"        <strong>Total Challengers:</strong> {ChallengerClassifications.Count}<br/>");
+                writer.WriteLine($"        <strong>Generated:</strong> {DateTime.Now:yyyy-MM-dd HH:mm}");
+                writer.WriteLine($"    </div>");
+
+                writer.WriteLine("    <table>");
+                writer.WriteLine("        <thead>");
+                writer.WriteLine("            <tr>");
+                writer.WriteLine("                <th>Rank</th>");
+                writer.WriteLine("                <th>Name</th>");
+                writer.WriteLine("                <th>Total Points</th>");
+                writer.WriteLine("                <th>Total Races</th>");
+                writer.WriteLine("                <th>Total KMs</th>");
+                writer.WriteLine("            </tr>");
+                writer.WriteLine("        </thead>");
+                writer.WriteLine("        <tbody>");
+
+                foreach (var challenger in ChallengerClassifications)
+                {
+                    writer.WriteLine("            <tr>");
+                    writer.WriteLine($"                <td class='rank'>#{challenger.RankByPoints}</td>");
+                    writer.WriteLine($"                <td><strong>{challenger.ChallengerFirstName} {challenger.ChallengerLastName}</strong></td>");
+                    writer.WriteLine($"                <td>{challenger.TotalPoints}</td>");
+                    writer.WriteLine($"                <td>{challenger.RaceCount}</td>");
+                    writer.WriteLine($"                <td>{challenger.TotalKilometers} km</td>");
+                    writer.WriteLine("            </tr>");
+                }
+
+                writer.WriteLine("        </tbody>");
+                writer.WriteLine("    </table>");
+                writer.WriteLine("</body>");
+                writer.WriteLine("</html>");
+            }
+        }
+
+        private void ExportChallengerSummaryToExcel(string filePath)
+        {
+            var challengeName = SelectedChallengeForClassification?.Name ?? "Challenge";
+            var challengeYear = SelectedChallengeForClassification?.Year ?? SelectedYear;
+
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+            using (var package = new ExcelPackage())
+            {
+                var worksheet = package.Workbook.Worksheets.Add("Summary");
+
+                // Title
+                worksheet.Cells[1, 1].Value = $"{challengeName} - Summary";
+                worksheet.Cells[1, 1, 1, 5].Merge = true;
+                worksheet.Cells[1, 1].Style.Font.Size = 18;
+                worksheet.Cells[1, 1].Style.Font.Bold = true;
+                worksheet.Cells[1, 1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+
+                // Info
+                worksheet.Cells[2, 1].Value = $"Year: {challengeYear}";
+                worksheet.Cells[3, 1].Value = $"Generated: {DateTime.Now:yyyy-MM-dd HH:mm}";
+
+                // Headers
+                int headerRow = 5;
+                worksheet.Cells[headerRow, 1].Value = "Rank";
+                worksheet.Cells[headerRow, 2].Value = "Name";
+                worksheet.Cells[headerRow, 3].Value = "Total Points";
+                worksheet.Cells[headerRow, 4].Value = "Total Races";
+                worksheet.Cells[headerRow, 5].Value = "Total KMs";
+
+                using (var range = worksheet.Cells[headerRow, 1, headerRow, 5])
+                {
+                    range.Style.Font.Bold = true;
+                    range.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.Orange);
+                    range.Style.Font.Color.SetColor(System.Drawing.Color.White);
+                    range.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                }
+
+                // Data
+                int row = headerRow + 1;
+                foreach (var challenger in ChallengerClassifications)
+                {
+                    worksheet.Cells[row, 1].Value = challenger.RankByPoints;
+                    worksheet.Cells[row, 2].Value = $"{challenger.ChallengerFirstName} {challenger.ChallengerLastName}";
+                    worksheet.Cells[row, 3].Value = challenger.TotalPoints;
+                    worksheet.Cells[row, 4].Value = challenger.RaceCount;
+                    worksheet.Cells[row, 5].Value = challenger.TotalKilometers;
+
+                    // Highlight top 3
+                    if (challenger.RankByPoints <= 3)
+                    {
+                        using (var rowRange = worksheet.Cells[row, 1, row, 5])
+                        {
+                            rowRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                            rowRange.Style.Fill.BackgroundColor.SetColor(
+                                challenger.RankByPoints == 1 ? System.Drawing.Color.Gold :
+                                challenger.RankByPoints == 2 ? System.Drawing.Color.Silver :
+                                System.Drawing.Color.FromArgb(205, 127, 50)); // Bronze
+                            rowRange.Style.Font.Bold = true;
+                        }
+                    }
+
+                    row++;
+                }
+
+                worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+                worksheet.Column(2).Width = 25; // Name column wider
+
+                package.SaveAs(new FileInfo(filePath));
+            }
+        }
+
+        private void ExportChallengerSummaryToWord(string filePath)
+        {
+            var challengeName = SelectedChallengeForClassification?.Name ?? "Challenge";
+            var challengeYear = SelectedChallengeForClassification?.Year ?? SelectedYear;
+
+            using (var document = WordprocessingDocument.Create(filePath, WordprocessingDocumentType.Document))
+            {
+                var mainPart = document.AddMainDocumentPart();
+                mainPart.Document = new Document();
+                var body = mainPart.Document.AppendChild(new Body());
+
+                // Title
+                var titlePara = body.AppendChild(new Paragraph());
+                var titleRun = titlePara.AppendChild(new Run());
+                titleRun.AppendChild(new Text($"{challengeName} - Summary"));
+                var titleProps = titleRun.AppendChild(new RunProperties());
+                titleProps.AppendChild(new Bold());
+                titleProps.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.FontSize { Val = "32" });
+
+                // Info
+                var infoPara = body.AppendChild(new Paragraph());
+                var infoRun = infoPara.AppendChild(new Run());
+                infoRun.AppendChild(new Text($"Year: {challengeYear} | Generated: {DateTime.Now:yyyy-MM-dd HH:mm}"));
+
+                body.AppendChild(new Paragraph()); // Spacing
+
+                // Table
+                var table = new Table();
+
+                // Header row
+                var headerRow = new TableRow();
+                AddWordTableCell(headerRow, "Rank");
+                AddWordTableCell(headerRow, "Name");
+                AddWordTableCell(headerRow, "Total Points");
+                AddWordTableCell(headerRow, "Total Races");
+                AddWordTableCell(headerRow, "Total KMs");
+                table.AppendChild(headerRow);
+
+                // Data rows
+                foreach (var challenger in ChallengerClassifications)
+                {
+                    var dataRow = new TableRow();
+                    AddWordTableCell(dataRow, $"#{challenger.RankByPoints}");
+                    AddWordTableCell(dataRow, $"{challenger.ChallengerFirstName} {challenger.ChallengerLastName}");
+                    AddWordTableCell(dataRow, challenger.TotalPoints.ToString());
+                    AddWordTableCell(dataRow, challenger.RaceCount.ToString());
+                    AddWordTableCell(dataRow, $"{challenger.TotalKilometers} km");
+                    table.AppendChild(dataRow);
+                }
+
+                body.AppendChild(table);
+                mainPart.Document.Save();
+            }
+        }
+
+        // Detailed Export Implementations
+
+        private void ExportChallengerDetailedToExcel(string filePath)
+        {
+            var challengeName = SelectedChallengeForClassification?.Name ?? "Challenge";
+            var challengeYear = SelectedChallengeForClassification?.Year ?? SelectedYear;
+
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+            using (var package = new ExcelPackage())
+            {
+                foreach (var challenger in ChallengerClassifications)
+                {
+                    var safeName = $"{challenger.ChallengerFirstName} {challenger.ChallengerLastName}";
+                    // Excel worksheet names have max 31 chars and can't contain special chars
+                    safeName = new string(safeName.Take(31).Where(c => !@":\/?*[]".Contains(c)).ToArray());
+
+                    var worksheet = package.Workbook.Worksheets.Add(safeName);
+
+                    // Challenger info
+                    worksheet.Cells[1, 1].Value = $"{challenger.ChallengerFirstName} {challenger.ChallengerLastName}";
+                    worksheet.Cells[1, 1].Style.Font.Size = 16;
+                    worksheet.Cells[1, 1].Style.Font.Bold = true;
+
+                    worksheet.Cells[2, 1].Value = $"Rank: #{challenger.RankByPoints}";
+                    worksheet.Cells[3, 1].Value = $"Total Points: {challenger.TotalPoints}";
+                    worksheet.Cells[4, 1].Value = $"Total Races: {challenger.RaceCount}";
+                    worksheet.Cells[5, 1].Value = $"Total KMs: {challenger.TotalKilometers}";
+
+                    // Race details headers
+                    int headerRow = 7;
+                    worksheet.Cells[headerRow, 1].Value = "Race #";
+                    worksheet.Cells[headerRow, 2].Value = "Race Name";
+                    worksheet.Cells[headerRow, 3].Value = "Distance";
+                    worksheet.Cells[headerRow, 4].Value = "Position";
+                    worksheet.Cells[headerRow, 5].Value = "Points";
+                    worksheet.Cells[headerRow, 6].Value = "Bonus";
+                    worksheet.Cells[headerRow, 7].Value = "In Best 7";
+
+                    using (var range = worksheet.Cells[headerRow, 1, headerRow, 7])
+                    {
+                        range.Style.Font.Bold = true;
+                        range.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                        range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightBlue);
+                    }
+
+                    // Race details data
+                    int row = headerRow + 1;
+                    foreach (var raceDetail in challenger.RaceDetails)
+                    {
+                        worksheet.Cells[row, 1].Value = raceDetail.RaceNumber;
+                        worksheet.Cells[row, 2].Value = raceDetail.RaceName;
+                        worksheet.Cells[row, 3].Value = $"{raceDetail.DistanceKm} km";
+                        worksheet.Cells[row, 4].Value = raceDetail.Position;
+                        worksheet.Cells[row, 5].Value = raceDetail.Points;
+                        worksheet.Cells[row, 6].Value = raceDetail.BonusKm;
+                        worksheet.Cells[row, 7].Value = raceDetail.IsInBest7 ? "✓" : "";
+
+                        if (raceDetail.IsInBest7)
+                        {
+                            using (var rowRange = worksheet.Cells[row, 1, row, 7])
+                            {
+                                rowRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                                rowRange.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGreen);
+                                rowRange.Style.Font.Bold = true;
+                            }
+                        }
+
+                        row++;
+                    }
+
+                    worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+                }
+
+                package.SaveAs(new FileInfo(filePath));
+            }
+        }
+
+        private void ExportChallengerDetailedToWord(string filePath)
+        {
+            var challengeName = SelectedChallengeForClassification?.Name ?? "Challenge";
+            var challengeYear = SelectedChallengeForClassification?.Year ?? SelectedYear;
+
+            using (var document = WordprocessingDocument.Create(filePath, WordprocessingDocumentType.Document))
+            {
+                var mainPart = document.AddMainDocumentPart();
+                mainPart.Document = new Document();
+                var body = mainPart.Document.AppendChild(new Body());
+
+                // Title
+                var titlePara = body.AppendChild(new Paragraph());
+                var titleRun = titlePara.AppendChild(new Run());
+                titleRun.AppendChild(new Text($"{challengeName} - Detailed Results"));
+                var titleProps = titleRun.AppendChild(new RunProperties());
+                titleProps.AppendChild(new Bold());
+                titleProps.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.FontSize { Val = "32" });
+
+                foreach (var challenger in ChallengerClassifications)
+                {
+                    // Challenger header
+                    var chalPara = body.AppendChild(new Paragraph());
+                    var chalRun = chalPara.AppendChild(new Run());
+                    chalRun.AppendChild(new Text($"#{challenger.RankByPoints} - {challenger.ChallengerFirstName} {challenger.ChallengerLastName}"));
+                    var chalProps = chalRun.AppendChild(new RunProperties());
+                    chalProps.AppendChild(new Bold());
+                    chalProps.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.FontSize { Val = "24" });
+
+                    // Stats
+                    var statsPara = body.AppendChild(new Paragraph());
+                    var statsRun = statsPara.AppendChild(new Run());
+                    statsRun.AppendChild(new Text($"Points: {challenger.TotalPoints} | Races: {challenger.RaceCount} | KMs: {challenger.TotalKilometers}"));
+
+                    // Race details table
+                    var table = new Table();
+                    var headerRow = new TableRow();
+                    AddWordTableCell(headerRow, "#");
+                    AddWordTableCell(headerRow, "Race");
+                    AddWordTableCell(headerRow, "Dist");
+                    AddWordTableCell(headerRow, "Pos");
+                    AddWordTableCell(headerRow, "Pts");
+                    AddWordTableCell(headerRow, "Bonus");
+                    AddWordTableCell(headerRow, "Best7");
+                    table.AppendChild(headerRow);
+
+                    foreach (var rd in challenger.RaceDetails)
+                    {
+                        var dataRow = new TableRow();
+                        AddWordTableCell(dataRow, rd.RaceNumber.ToString());
+                        AddWordTableCell(dataRow, rd.RaceName);
+                        AddWordTableCell(dataRow, $"{rd.DistanceKm}km");
+                        AddWordTableCell(dataRow, rd.Position.ToString());
+                        AddWordTableCell(dataRow, rd.Points.ToString());
+                        AddWordTableCell(dataRow, rd.BonusKm.ToString());
+                        AddWordTableCell(dataRow, rd.IsInBest7 ? "✓" : "");
+                        table.AppendChild(dataRow);
+                    }
+
+                    body.AppendChild(table);
+                    body.AppendChild(new Paragraph()); // Spacing
+                }
+
+                mainPart.Document.Save();
             }
         }
     }
