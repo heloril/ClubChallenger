@@ -27,6 +27,7 @@ namespace NameParser.UI.ViewModels
         private readonly RaceRepository _raceRepository;
         private readonly ClassificationRepository _classificationRepository;
         private readonly RaceEventRepository _raceEventRepository;
+        private readonly ChallengeRepository _challengeRepository;
         private readonly FacebookService _facebookService;
         private string _selectedFilePath;
         private string _raceName;
@@ -37,9 +38,12 @@ namespace NameParser.UI.ViewModels
         private bool _isProcessing;
         private RaceEntity _selectedRace;
         private List<object> _selectedRaces;
+        private RaceEventEntity _selectedRaceEventForClassification;
+        private ObservableCollection<RaceEntity> _racesInSelectedEvent;
         private bool _showGeneralClassification;
         private bool _showChallengerClassification;
         private int _selectedYear;
+        private ChallengeEntity _selectedChallengeForClassification;
         private bool _isHorsChallenge;
         private bool? _isMemberFilter;
         private bool? _isChallengerFilter;
@@ -54,6 +58,7 @@ namespace NameParser.UI.ViewModels
             _raceRepository = new RaceRepository();
             _classificationRepository = new ClassificationRepository();
             _raceEventRepository = new RaceEventRepository();
+            _challengeRepository = new ChallengeRepository();
 
             // Initialize Facebook Service
             var fbSettings = new FacebookSettings
@@ -115,15 +120,19 @@ namespace NameParser.UI.ViewModels
             Classifications = new ObservableCollection<ClassificationEntity>();
             GeneralClassifications = new ObservableCollection<GeneralClassificationDto>();
             ChallengerClassifications = new ObservableCollection<ChallengerClassificationDto>();
+            ChallengesForClassification = new ObservableCollection<ChallengeEntity>();
             RaceEventsForSelection = new ObservableCollection<RaceEventEntity>();
             AvailableDistancesForUpload = new ObservableCollection<RaceDistanceUploadModel>();
+            RacesInSelectedEvent = new ObservableCollection<RaceEntity>();
 
             // Initialize child ViewModels for new tabs
             ChallengeManagementViewModel = new ChallengeManagementViewModel();
             RaceEventManagementViewModel = new RaceEventManagementViewModel();
+            ChallengeCalendarViewModel = new ChallengeCalendarViewModel();
 
             LoadRaces();
             LoadRaceEventsForSelection();
+            LoadChallengesForClassification();
         }
 
         public ObservableCollection<int> Years { get; }
@@ -131,8 +140,10 @@ namespace NameParser.UI.ViewModels
         public ObservableCollection<ClassificationEntity> Classifications { get; }
         public ObservableCollection<GeneralClassificationDto> GeneralClassifications { get; }
         public ObservableCollection<ChallengerClassificationDto> ChallengerClassifications { get; }
+        public ObservableCollection<ChallengeEntity> ChallengesForClassification { get; }
         public ObservableCollection<RaceEventEntity> RaceEventsForSelection { get; }
         public ObservableCollection<RaceDistanceUploadModel> AvailableDistancesForUpload { get; }
+        public ObservableCollection<RaceEntity> RacesInSelectedEvent { get; private set; }
 
         public string SelectedFilePath
         {
@@ -226,9 +237,20 @@ namespace NameParser.UI.ViewModels
                 {
                     LoadGeneralClassification();
                 }
-                else if (ShowChallengerClassification)
+            }
+        }
+
+        public ChallengeEntity SelectedChallengeForClassification
+        {
+            get => _selectedChallengeForClassification;
+            set
+            {
+                if (SetProperty(ref _selectedChallengeForClassification, value))
                 {
-                    LoadChallengerClassification();
+                    if (ShowChallengerClassification && value != null)
+                    {
+                        LoadChallengerClassification();
+                    }
                 }
             }
         }
@@ -245,7 +267,7 @@ namespace NameParser.UI.ViewModels
             set
             {
                 SetProperty(ref _isMemberFilter, value);
-                if (SelectedRace != null)
+                if (SelectedRaceEventForClassification != null)
                 {
                     ExecuteViewClassification(null);
                 }
@@ -258,9 +280,25 @@ namespace NameParser.UI.ViewModels
             set
             {
                 SetProperty(ref _isChallengerFilter, value);
-                if (SelectedRace != null)
+                if (SelectedRaceEventForClassification != null)
                 {
                     ExecuteViewClassification(null);
+                }
+            }
+        }
+
+        public RaceEventEntity SelectedRaceEventForClassification
+        {
+            get => _selectedRaceEventForClassification;
+            set
+            {
+                if (SetProperty(ref _selectedRaceEventForClassification, value))
+                {
+                    LoadRacesForSelectedEvent();
+                    ((RelayCommand)ViewClassificationCommand)?.RaiseCanExecuteChanged();
+                    ((RelayCommand)ReprocessRaceCommand)?.RaiseCanExecuteChanged();
+                    ((RelayCommand)ExportForEmailCommand)?.RaiseCanExecuteChanged();
+                    ((RelayCommand)ShareRaceToFacebookCommand)?.RaiseCanExecuteChanged();
                 }
             }
         }
@@ -316,6 +354,7 @@ namespace NameParser.UI.ViewModels
         // Child ViewModels for new tabs
         public ChallengeManagementViewModel ChallengeManagementViewModel { get; }
         public RaceEventManagementViewModel RaceEventManagementViewModel { get; }
+        public ChallengeCalendarViewModel ChallengeCalendarViewModel { get; }
 
         // Localization
         public LocalizationService Localization => LocalizationService.Instance;
@@ -451,15 +490,26 @@ namespace NameParser.UI.ViewModels
 
         private bool CanExecuteReprocessRace(object parameter)
         {
-            return !IsProcessing && SelectedRace != null && SelectedRace.FileContent != null && SelectedRace.FileContent.Length > 0;
+            return !IsProcessing && SelectedRaceEventForClassification != null && 
+                   RacesInSelectedEvent.Any(r => r.FileContent != null && r.FileContent.Length > 0);
         }
 
         private async void ExecuteReprocessRace(object parameter)
         {
-            if (SelectedRace == null) return;
+            if (SelectedRaceEventForClassification == null) return;
+
+            var racesToReprocess = RacesInSelectedEvent.Where(r => r.FileContent != null && r.FileContent.Length > 0).ToList();
+
+            if (!racesToReprocess.Any())
+            {
+                MessageBox.Show("No races with stored files found in this event.", "No Races", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
 
             var result = MessageBox.Show(
-                $"Are you sure you want to reprocess race '{SelectedRace.Name}'?\nThis will delete existing classifications and reprocess from the stored file.",
+                $"Are you sure you want to reprocess all {racesToReprocess.Count} race(s) in event '{SelectedRaceEventForClassification.Name}'?\n\n" +
+                $"This will delete existing classifications and reprocess from the stored files.\n\n" +
+                $"Races: {string.Join(", ", racesToReprocess.Select(r => $"{r.DistanceKm}km"))}",
                 "Confirm Reprocess",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
@@ -467,82 +517,118 @@ namespace NameParser.UI.ViewModels
             if (result != MessageBoxResult.Yes) return;
 
             IsProcessing = true;
-            StatusMessage = "Reprocessing race...";
+            StatusMessage = "Reprocessing races...";
+
+            int successCount = 0;
+            int failCount = 0;
+            var errors = new List<string>();
 
             try
             {
-                await System.Threading.Tasks.Task.Run(() =>
+                foreach (var race in racesToReprocess)
                 {
-                    // Check if the stored file content exists
-                    if (SelectedRace.FileContent == null || SelectedRace.FileContent.Length == 0)
-                    {
-                        throw new InvalidOperationException("No file content stored in database for this race.");
-                    }
-
-                    string tempFilePath = null;
                     try
                     {
-                        // Write file content from database to temporary file for processing
-                        var fileStorageService = new FileStorageService();
-                        tempFilePath = fileStorageService.WriteToTempFile(SelectedRace.FileContent, SelectedRace.FileName);
-
-                        // Delete existing classifications for this race
-                        _classificationRepository.DeleteClassificationsByRace(SelectedRace.Id);
-
-                        // Create race distance object from stored data
-                        var raceDistance = new RaceDistance(SelectedRace.RaceNumber, SelectedRace.Name, SelectedRace.DistanceKm);
-
-                        // Get members
-                        var memberRepository = new JsonMemberRepository("Members.json");
-                        var challengerRepository = new JsonMemberRepository("Challenge.json");
-                        var memberService = new MemberService(memberRepository, challengerRepository);
-                        var allMembers = memberService.GetAllMembersAndChallengers();
-
-                        // Select appropriate parser based on file extension
-                        var extension = SelectedRace.FileExtension.ToLowerInvariant();
-                        IRaceResultRepository raceResultRepository;
-
-                        if (extension == ".pdf")
+                        await System.Threading.Tasks.Task.Run(() =>
                         {
-                            raceResultRepository = new PdfRaceResultRepository();
-                        }
-                        else
-                        {
-                            raceResultRepository = new ExcelRaceResultRepository();
-                        }
+                            // Check if the stored file content exists
+                            if (race.FileContent == null || race.FileContent.Length == 0)
+                            {
+                                throw new InvalidOperationException($"No file content stored in database for {race.DistanceKm}km race.");
+                            }
 
-                        var pointsCalculationService = new PointsCalculationService();
+                            string tempFilePath = null;
+                            try
+                            {
+                                // Write file content from database to temporary file for processing
+                                var fileStorageService = new FileStorageService();
+                                tempFilePath = fileStorageService.WriteToTempFile(race.FileContent, race.FileName);
 
-                        var raceProcessingService = new RaceProcessingService(
-                            memberRepository,
-                            raceResultRepository,
-                            pointsCalculationService);
+                                // Delete existing classifications for this race
+                                _classificationRepository.DeleteClassificationsByRace(race.Id);
 
-                        // Process the race using temporary file path
-                        var classification = raceProcessingService.ProcessRaceWithMembers(tempFilePath, raceDistance, allMembers);
+                                // Create race distance object from stored data
+                                var raceDistance = new RaceDistance(race.RaceNumber, race.Name, race.DistanceKm);
 
-                        // Save new classifications
-                        _classificationRepository.SaveClassifications(SelectedRace.Id, classification);
+                                // Get members
+                                var memberRepository = new JsonMemberRepository("Members.json");
+                                var challengerRepository = new JsonMemberRepository("Challenge.json");
+                                var memberService = new MemberService(memberRepository, challengerRepository);
+                                var allMembers = memberService.GetAllMembersAndChallengers();
 
-                        // Update race status
-                        _raceRepository.UpdateRaceStatus(SelectedRace.Id, "Processed");
+                                // Select appropriate parser based on file extension
+                                var extension = race.FileExtension.ToLowerInvariant();
+                                IRaceResultRepository raceResultRepository;
+
+                                if (extension == ".pdf")
+                                {
+                                    raceResultRepository = new PdfRaceResultRepository();
+                                }
+                                else
+                                {
+                                    raceResultRepository = new ExcelRaceResultRepository();
+                                }
+
+                                var pointsCalculationService = new PointsCalculationService();
+
+                                var raceProcessingService = new RaceProcessingService(
+                                    memberRepository,
+                                    raceResultRepository,
+                                    pointsCalculationService);
+
+                                // Process the race using temporary file path
+                                var classification = raceProcessingService.ProcessRaceWithMembers(tempFilePath, raceDistance, allMembers);
+
+                                // Save new classifications
+                                _classificationRepository.SaveClassifications(race.Id, classification);
+
+                                // Update race status
+                                _raceRepository.UpdateRaceStatus(race.Id, "Processed");
+                            }
+                            finally
+                            {
+                                // Clean up temporary file
+                                if (!string.IsNullOrEmpty(tempFilePath))
+                                {
+                                    var fileStorageService = new FileStorageService();
+                                    fileStorageService.DeleteTempFile(tempFilePath);
+                                }
+                            }
+                        });
+
+                        successCount++;
+                        StatusMessage = $"Reprocessed {successCount}/{racesToReprocess.Count} races...";
                     }
-                    finally
+                    catch (Exception ex)
                     {
-                        // Clean up temporary file
-                        if (!string.IsNullOrEmpty(tempFilePath))
-                        {
-                            var fileStorageService = new FileStorageService();
-                            fileStorageService.DeleteTempFile(tempFilePath);
-                        }
+                        failCount++;
+                        errors.Add($"{race.DistanceKm}km: {ex.Message}");
                     }
-                });
+                }
 
                 System.Windows.Application.Current.Dispatcher.Invoke(() =>
                 {
-                    StatusMessage = "Race reprocessed successfully!";
                     LoadRaces();
-                    MessageBox.Show("Race reprocessed successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    LoadRacesForSelectedEvent();
+
+                    if (failCount == 0)
+                    {
+                        StatusMessage = $"All {successCount} race(s) reprocessed successfully!";
+                        MessageBox.Show($"All races reprocessed successfully!\n\nProcessed: {successCount} race(s)", 
+                            "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    else
+                    {
+                        StatusMessage = $"Reprocessed {successCount} race(s), {failCount} failed.";
+                        MessageBox.Show(
+                            $"Reprocessing completed with errors:\n\n" +
+                            $"Successful: {successCount}\n" +
+                            $"Failed: {failCount}\n\n" +
+                            $"Errors:\n" + string.Join("\n", errors),
+                            "Partial Success",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+                    }
                 });
             }
             catch (Exception ex)
@@ -550,7 +636,7 @@ namespace NameParser.UI.ViewModels
                 System.Windows.Application.Current.Dispatcher.Invoke(() =>
                 {
                     StatusMessage = $"Error: {ex.Message}";
-                    MessageBox.Show($"Error reprocessing race: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"Error reprocessing races: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 });
             }
             finally
@@ -561,7 +647,8 @@ namespace NameParser.UI.ViewModels
 
         private bool CanExecuteExportForEmail(object parameter)
         {
-            return SelectedRace != null && SelectedRace.Status == "Processed";
+            return SelectedRaceEventForClassification != null && 
+                   RacesInSelectedEvent.Any(r => r.Status == "Processed");
         }
 
         private bool CanExecuteDownloadMultipleResults(object parameter)
@@ -1662,24 +1749,32 @@ namespace NameParser.UI.ViewModels
 
         private bool CanExecuteViewClassification(object parameter)
         {
-            return SelectedRace != null && SelectedRace.Status == "Processed";
+            return SelectedRaceEventForClassification != null && 
+                   RacesInSelectedEvent.Any(r => r.Status == "Processed");
         }
 
         private void ExecuteViewClassification(object parameter)
         {
-            if (SelectedRace == null) return;
+            if (SelectedRaceEventForClassification == null) return;
 
             try
             {
                 ShowGeneralClassification = false;
                 ShowChallengerClassification = false;
 
-                var classifications = _classificationRepository.GetClassificationsByRace(SelectedRace.Id, IsMemberFilter, IsChallengerFilter);
-
                 Classifications.Clear();
-                foreach (var classification in classifications)
+
+                // Load classifications for all races in the selected event, grouped by distance
+                var allClassifications = new List<ClassificationEntity>();
+                foreach (var race in RacesInSelectedEvent.Where(r => r.Status == "Processed").OrderBy(r => r.DistanceKm))
                 {
-                    Classifications.Add(classification);
+                    var raceClassifications = _classificationRepository.GetClassificationsByRace(race.Id, IsMemberFilter, IsChallengerFilter);
+
+                    // Add a separator/header indicator for each distance
+                    foreach (var classification in raceClassifications)
+                    {
+                        Classifications.Add(classification);
+                    }
                 }
 
                 string filterText = "";
@@ -1696,7 +1791,9 @@ namespace NameParser.UI.ViewModels
                     }
                     filterText = $" ({string.Join(", ", filters)}, winner always shown)";
                 }
-                StatusMessage = $"Loaded {classifications.Count} classifications for race '{SelectedRace.Name}'{filterText}.";
+
+                int processedRaces = RacesInSelectedEvent.Count(r => r.Status == "Processed");
+                StatusMessage = $"Loaded classifications for {processedRaces} race(s) from event '{SelectedRaceEventForClassification.Name}'{filterText}.";
             }
             catch (Exception ex)
             {
@@ -1748,7 +1845,14 @@ namespace NameParser.UI.ViewModels
         {
             try
             {
-                var challengerClassifications = _classificationRepository.GetChallengerClassification(SelectedYear);
+                if (SelectedChallengeForClassification == null)
+                {
+                    StatusMessage = "Please select a challenge to view classifications.";
+                    ChallengerClassifications.Clear();
+                    return;
+                }
+
+                var challengerClassifications = _classificationRepository.GetChallengerClassification(SelectedChallengeForClassification.Year);
 
                 ChallengerClassifications.Clear();
                 foreach (var classification in challengerClassifications)
@@ -1756,12 +1860,29 @@ namespace NameParser.UI.ViewModels
                     ChallengerClassifications.Add(classification);
                 }
 
-                StatusMessage = $"Loaded challenger classification for year {SelectedYear} ({challengerClassifications.Count} challengers).";
+                StatusMessage = $"Loaded challenger classification for '{SelectedChallengeForClassification.Name}' ({challengerClassifications.Count} challengers).";
             }
             catch (Exception ex)
             {
                 StatusMessage = $"Error loading challenger classification: {ex.Message}";
                 MessageBox.Show($"Error loading challenger classification: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void LoadChallengesForClassification()
+        {
+            try
+            {
+                var challenges = _challengeRepository.GetAll();
+                ChallengesForClassification.Clear();
+                foreach (var challenge in challenges.OrderByDescending(c => c.Year).ThenBy(c => c.Name))
+                {
+                    ChallengesForClassification.Add(challenge);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error loading challenges: {ex.Message}";
             }
         }
 
@@ -1820,6 +1941,34 @@ namespace NameParser.UI.ViewModels
             }
         }
 
+        private void LoadRacesForSelectedEvent()
+        {
+            RacesInSelectedEvent.Clear();
+            Classifications.Clear();
+
+            if (SelectedRaceEventForClassification == null)
+            {
+                StatusMessage = "No race event selected.";
+                return;
+            }
+
+            try
+            {
+                var races = _raceRepository.GetRacesByRaceEvent(SelectedRaceEventForClassification.Id);
+                foreach (var race in races)
+                {
+                    RacesInSelectedEvent.Add(race);
+                }
+
+                StatusMessage = $"Loaded {races.Count} race(s) for event '{SelectedRaceEventForClassification.Name}' (ordered by distance).";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error loading races for event: {ex.Message}";
+                MessageBox.Show($"Error loading races for event: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         private void ClearForm()
         {
             SelectedFilePath = string.Empty;
@@ -1830,12 +1979,16 @@ namespace NameParser.UI.ViewModels
 
         private bool CanExecuteExportChallengerClassification(object parameter)
         {
-            return ChallengerClassifications != null && ChallengerClassifications.Count > 0;
+            return SelectedChallengeForClassification != null && 
+                   ChallengerClassifications != null && 
+                   ChallengerClassifications.Count > 0;
         }
 
         private void ExecuteExportChallengerClassification(object parameter)
         {
-            if (ChallengerClassifications == null || ChallengerClassifications.Count == 0) return;
+            if (SelectedChallengeForClassification == null || 
+                ChallengerClassifications == null || 
+                ChallengerClassifications.Count == 0) return;
 
             try
             {
@@ -1856,7 +2009,7 @@ namespace NameParser.UI.ViewModels
                 {
                     Filter = "HTML Files (*.html)|*.html|Text Files (*.txt)|*.txt|All Files (*.*)|*.*",
                     Title = Localization["ExportResultsForEmail"],
-                    FileName = $"Challenger_Classification_{(exportSummary ? "Summary" : "Detailed")}_{SelectedYear}_{DateTime.Now:yyyyMMdd}.html"
+                    FileName = $"Challenger_Classification_{SelectedChallengeForClassification.Name.Replace(" ", "_")}_{(exportSummary ? "Summary" : "Detailed")}_{DateTime.Now:yyyyMMdd}.html"
                 };
 
                 if (saveFileDialog.ShowDialog() == true)
@@ -1886,6 +2039,9 @@ namespace NameParser.UI.ViewModels
 
         private void ExportChallengerClassificationToHtml(string filePath, bool exportSummary)
         {
+            var challengeName = SelectedChallengeForClassification?.Name ?? "Challenge";
+            var challengeYear = SelectedChallengeForClassification?.Year ?? SelectedYear;
+
             using (var writer = new StreamWriter(filePath))
             {
                 // Write HTML header
@@ -1893,7 +2049,7 @@ namespace NameParser.UI.ViewModels
                 writer.WriteLine("<html>");
                 writer.WriteLine("<head>");
                 writer.WriteLine("    <meta charset='utf-8'>");
-                writer.WriteLine($"    <title>{Localization["ChallengerClassification"]} {SelectedYear}</title>");
+                writer.WriteLine($"    <title>{challengeName} - {Localization["ChallengerClassification"]} {challengeYear}</title>");
                 writer.WriteLine("    <style>");
                 writer.WriteLine("        body { font-family: Arial, sans-serif; margin: 20px; }");
                 writer.WriteLine("        h1 { color: #2196F3; }");
@@ -1907,7 +2063,8 @@ namespace NameParser.UI.ViewModels
                 writer.WriteLine("    </style>");
                 writer.WriteLine("</head>");
                 writer.WriteLine("<body>");
-                writer.WriteLine($"    <h1>🏆 {Localization["ChallengerClassification"]} {SelectedYear} - {(exportSummary ? Localization["Summary"] : Localization["Detailed"])}</h1>");
+                writer.WriteLine($"    <h1>🏆 {challengeName} - {Localization["ChallengerClassification"]} {challengeYear}</h1>");
+                writer.WriteLine($"    <h2>{(exportSummary ? Localization["Summary"] : Localization["Detailed"])}</h2>");
                 writer.WriteLine($"    <div class='summary'>");
                 writer.WriteLine($"        <strong>{Localization["TotalChallengers"]}:</strong> {ChallengerClassifications.Count}<br/>");
                 writer.WriteLine($"        <strong>{Localization["Generated"]}:</strong> {DateTime.Now:yyyy-MM-dd HH:mm}<br/>");
@@ -1997,11 +2154,15 @@ namespace NameParser.UI.ViewModels
 
         private void ExportChallengerClassificationToText(string filePath, bool exportSummary)
         {
+            var challengeName = SelectedChallengeForClassification?.Name ?? "Challenge";
+            var challengeYear = SelectedChallengeForClassification?.Year ?? SelectedYear;
+
             using (var writer = new StreamWriter(filePath))
             {
                 writer.WriteLine($"╔═══════════════════════════════════════════════════════════════════════════════╗");
+                writer.WriteLine($"║          {challengeName.ToUpper().PadRight(67)}║");
                 writer.WriteLine($"║          {Localization["ChallengerClassification"].ToUpper().PadRight(67)}║");
-                writer.WriteLine($"║                           {SelectedYear}                                              ║");
+                writer.WriteLine($"║                           {challengeYear}                                              ║");
                 writer.WriteLine($"║          {(exportSummary ? Localization["Summary"] : Localization["Detailed"]).ToUpper().PadRight(67)}║");
                 writer.WriteLine($"╚═══════════════════════════════════════════════════════════════════════════════╝");
                 writer.WriteLine();
@@ -2089,19 +2250,27 @@ namespace NameParser.UI.ViewModels
         // Facebook Sharing Methods
         private bool CanExecuteShareRaceToFacebook(object parameter)
         {
-            return SelectedRace != null;
+            return SelectedRaceEventForClassification != null && 
+                   RacesInSelectedEvent.Any(r => r.Status == "Processed");
         }
 
         private async void ExecuteShareRaceToFacebook(object parameter)
         {
-            if (SelectedRace == null) return;
+            if (SelectedRaceEventForClassification == null) return;
+
+            var processedRaces = RacesInSelectedEvent.Where(r => r.Status == "Processed").ToList();
+            if (!processedRaces.Any())
+            {
+                MessageBox.Show("No processed races found in this event.", "No Races", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
 
             try
             {
                 var result = MessageBox.Show(
-                    $"Share '{SelectedRace.Name}' results to Facebook?\n\n" +
+                    $"Share '{SelectedRaceEventForClassification.Name}' results to Facebook?\n\n" +
                     "This will create TWO posts:\n" +
-                    "1. Full race results with top 3 finishers\n" +
+                    "1. Full race event results with top 3 finishers for each distance\n" +
                     "2. Challenger results (all challengers participating)",
                     "Share to Facebook",
                     MessageBoxButton.YesNo,
@@ -2112,19 +2281,24 @@ namespace NameParser.UI.ViewModels
                 StatusMessage = "Sharing to Facebook...";
                 IsProcessing = true;
 
-                // Get all classifications for this race
-                var allClassifications = _classificationRepository.GetClassificationsByRace(SelectedRace.Id, null, null);
+                // Get all classifications for all races in the event
+                var allClassifications = new List<ClassificationEntity>();
+                foreach (var race in processedRaces.OrderBy(r => r.DistanceKm))
+                {
+                    var raceClassifications = _classificationRepository.GetClassificationsByRace(race.Id, null, null);
+                    allClassifications.AddRange(raceClassifications);
+                }
 
-                // Post 1: Full Results Summary
-                var fullResultsSummary = BuildFullResultsSummary(SelectedRace, allClassifications);
+                // Post 1: Full Results Summary (grouped by distance)
+                var fullResultsSummary = BuildFullRaceEventResultsSummary(SelectedRaceEventForClassification, processedRaces, allClassifications);
 
                 // Post 2: Challenger Results (ALL challengers, regardless of points)
                 var challengerResults = allClassifications.Where(c => c.IsChallenger).ToList();
-                var challengerSummary = BuildChallengerResultsSummary(SelectedRace, challengerResults);
+                var challengerSummary = BuildRaceEventChallengerResultsSummary(SelectedRaceEventForClassification, challengerResults);
 
                 // Post both to Facebook
                 var results = await _facebookService.PostRaceWithLatestResultsAsync(
-                    $"{SelectedRace.Name} - {SelectedRace.Year}",
+                    $"{SelectedRaceEventForClassification.Name} - {SelectedRaceEventForClassification.EventDate:dd/MM/yyyy}",
                     fullResultsSummary,
                     challengerSummary);
 
@@ -2136,7 +2310,7 @@ namespace NameParser.UI.ViewModels
                     StatusMessage = $"✅ Successfully shared both posts to Facebook! " +
                         $"Post 1 ID: {results[0].PostId}, Post 2 ID: {results[1].PostId}";
                     MessageBox.Show(
-                        $"Both race results shared successfully to Facebook!\n\n" +
+                        $"Both race event results shared successfully to Facebook!\n\n" +
                         $"Post 1 (Full Results) ID: {results[0].PostId}\n" +
                         $"Post 2 (Challengers) ID: {results[1].PostId}",
                         "Facebook Share Success",
@@ -2177,6 +2351,84 @@ namespace NameParser.UI.ViewModels
             {
                 IsProcessing = false;
             }
+        }
+
+        private string BuildFullRaceEventResultsSummary(RaceEventEntity raceEvent, List<RaceEntity> races, List<ClassificationEntity> allClassifications)
+        {
+            var summary = $"📊 Full Results for {raceEvent.Name}\n";
+            summary += $"📅 {raceEvent.EventDate:dd/MM/yyyy}\n\n";
+
+            foreach (var race in races.OrderBy(r => r.DistanceKm))
+            {
+                var raceClassifications = allClassifications.Where(c => c.RaceId == race.Id).OrderBy(c => c.Position).ToList();
+
+                summary += $"🏃 {race.DistanceKm}km Race\n";
+                summary += "🏆 Top 3:\n";
+
+                var topResults = raceClassifications.Take(3).ToList();
+                for (int i = 0; i < topResults.Count && i < 3; i++)
+                {
+                    var result = topResults[i];
+                    var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : "🥉";
+                    summary += $"{medal} {result.Position}. {result.MemberFirstName} {result.MemberLastName}";
+
+                    if (result.RaceTime.HasValue)
+                    {
+                        summary += $" - {result.RaceTime.Value:hh\\:mm\\:ss}";
+                    }
+                    summary += "\n";
+                }
+                summary += $"👥 {raceClassifications.Count} participants\n\n";
+            }
+
+            var totalParticipants = allClassifications.Select(c => new { c.MemberFirstName, c.MemberLastName }).Distinct().Count();
+            summary += $"📈 Total unique participants: {totalParticipants}";
+
+            return summary;
+        }
+
+        private string BuildRaceEventChallengerResultsSummary(RaceEventEntity raceEvent, List<ClassificationEntity> challengerResults)
+        {
+            var summary = $"⭐ Challenger Results - {raceEvent.Name}\n";
+            summary += $"📅 {raceEvent.EventDate:dd/MM/yyyy}\n";
+            summary += $"All Challengers Participating in This Event\n\n";
+
+            // Group by challenger and sum points
+            var challengerGroups = challengerResults
+                .GroupBy(c => new { c.MemberFirstName, c.MemberLastName })
+                .Select(g => new
+                {
+                    FirstName = g.Key.MemberFirstName,
+                    LastName = g.Key.MemberLastName,
+                    TotalPoints = g.Sum(c => c.Points),
+                    Races = g.Count()
+                })
+                .OrderByDescending(c => c.TotalPoints)
+                .ToList();
+
+            if (challengerGroups.Count == 0)
+            {
+                summary += "No challengers participated in this event.\n";
+                return summary;
+            }
+
+            summary += "🎯 Top Challengers:\n";
+            var topCount = Math.Min(10, challengerGroups.Count);
+
+            for (int i = 0; i < topCount; i++)
+            {
+                var challenger = challengerGroups[i];
+                summary += $"⭐ {challenger.FirstName} {challenger.LastName}: {challenger.TotalPoints} pts ({challenger.Races} race{(challenger.Races > 1 ? "s" : "")})\n";
+            }
+
+            if (challengerGroups.Count > topCount)
+            {
+                summary += $"\n... and {challengerGroups.Count - topCount} more challengers!\n";
+            }
+
+            summary += $"\n📈 Total challengers: {challengerGroups.Count}";
+
+            return summary;
         }
 
         private bool CanExecuteShareChallengeToFacebook(object parameter)
@@ -2350,7 +2602,12 @@ namespace NameParser.UI.ViewModels
 
         private string BuildChallengeSummary()
         {
-            var summary = $"Challenge {SelectedYear} Standings\n\n";
+            if (SelectedChallengeForClassification == null)
+            {
+                return "No challenge selected.";
+            }
+
+            var summary = $"{SelectedChallengeForClassification.Name} - {SelectedChallengeForClassification.Year} Standings\n\n";
             summary += "🏆 Top Challengers (with >0 points):\n";
 
             // Filter to only show challengers with points > 0

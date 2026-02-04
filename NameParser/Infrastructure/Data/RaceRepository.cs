@@ -153,5 +153,16 @@ namespace NameParser.Infrastructure.Data
                 }
             }
         }
+
+        public List<RaceEntity> GetRacesByRaceEvent(int raceEventId)
+        {
+            using (var context = new RaceManagementContext())
+            {
+                return context.Races
+                    .Where(r => r.RaceEventId == raceEventId)
+                    .OrderBy(r => r.DistanceKm)  // Order by distance
+                    .ToList();
+            }
+        }
     }
 }

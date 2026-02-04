@@ -133,5 +133,11 @@ namespace NameParser.Infrastructure.Data
                     .ToList();
             }
         }
+
+        public List<RaceEventEntity> GetRaceEventsForChallenge(int challengeId)
+        {
+            // Alias for GetRaceEventsByChallenge - for consistency with naming
+            return GetRaceEventsByChallenge(challengeId);
+        }
     }
 }

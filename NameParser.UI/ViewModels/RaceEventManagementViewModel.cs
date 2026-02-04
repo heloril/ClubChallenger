@@ -7,6 +7,7 @@ using Microsoft.Win32;
 using NameParser.Infrastructure.Data;
 using NameParser.Infrastructure.Data.Models;
 using NameParser.Infrastructure.Parsers;
+using NameParser.Infrastructure.Services;
 
 namespace NameParser.UI.ViewModels
 {
@@ -15,7 +16,8 @@ namespace NameParser.UI.ViewModels
         private readonly RaceEventRepository _raceEventRepository;
         private readonly ChallengeRepository _challengeRepository;
         private readonly RaceEventExcelParser _excelParser;
-        
+        private readonly ExcelTemplateService _templateService;
+
         private RaceEventEntity _selectedRaceEvent;
         private string _eventName;
         private DateTime _eventDate;
@@ -32,6 +34,7 @@ namespace NameParser.UI.ViewModels
             _raceEventRepository = new RaceEventRepository();
             _challengeRepository = new ChallengeRepository();
             _excelParser = new RaceEventExcelParser();
+            _templateService = new ExcelTemplateService();
 
             EventDate = DateTime.Now;
 
@@ -46,6 +49,7 @@ namespace NameParser.UI.ViewModels
             ClearFormCommand = new RelayCommand(ExecuteClearForm);
             BrowseImportFileCommand = new RelayCommand(ExecuteBrowseImportFile);
             ImportFromExcelCommand = new RelayCommand(ExecuteImportFromExcel, CanExecuteImportFromExcel);
+            ExportTemplateCommand = new RelayCommand(ExecuteExportTemplate);
             AddDistanceCommand = new RelayCommand(ExecuteAddDistance, CanExecuteAddDistance);
             RemoveDistanceCommand = new RelayCommand(ExecuteRemoveDistance, CanExecuteRemoveDistance);
 
@@ -63,6 +67,7 @@ namespace NameParser.UI.ViewModels
         public ICommand ClearFormCommand { get; }
         public ICommand BrowseImportFileCommand { get; }
         public ICommand ImportFromExcelCommand { get; }
+        public ICommand ExportTemplateCommand { get; }
         public ICommand AddDistanceCommand { get; }
         public ICommand RemoveDistanceCommand { get; }
 
@@ -361,6 +366,62 @@ namespace NameParser.UI.ViewModels
             {
                 StatusMessage = $"Error: {ex.Message}";
                 MessageBox.Show($"Error importing from Excel: {ex.Message}\n\nStack trace: {ex.StackTrace}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExecuteExportTemplate(object parameter)
+        {
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "Excel Files (*.xlsx)|*.xlsx",
+                    DefaultExt = "xlsx",
+                    FileName = $"RaceEvent_Import_Template_{DateTime.Now:yyyyMMdd}.xlsx",
+                    Title = "Save Race Event Import Template"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    _templateService.GenerateRaceEventTemplate(saveFileDialog.FileName);
+
+                    StatusMessage = $"Template exported successfully to: {saveFileDialog.FileName}";
+
+                    var result = MessageBox.Show(
+                        $"Template exported successfully!\n\n" +
+                        $"File: {saveFileDialog.FileName}\n\n" +
+                        $"The template includes:\n" +
+                        $"• Header row with required columns\n" +
+                        $"• Instructions row explaining each field\n" +
+                        $"• Example data rows showing the format\n" +
+                        $"• Notes explaining how to use the template\n\n" +
+                        $"Do you want to open the file?",
+                        "Template Exported",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Information);
+
+                    if (result == MessageBoxResult.Yes)
+                    {
+                        try
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                            {
+                                FileName = saveFileDialog.FileName,
+                                UseShellExecute = true
+                            });
+                        }
+                        catch (Exception openEx)
+                        {
+                            MessageBox.Show($"File saved but couldn't be opened: {openEx.Message}", 
+                                "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error exporting template: {ex.Message}";
+                MessageBox.Show($"Error exporting template: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
