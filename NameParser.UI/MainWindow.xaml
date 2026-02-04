@@ -269,6 +269,9 @@
                             <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5">
                                 <Button Content="View All Classifications" Command="{Binding ViewClassificationCommand}" 
                                        Background="#2196F3" Foreground="White"/>
+                                <Button Content="🗑️ Delete Selected Race" Command="{Binding DeleteRaceCommand}" 
+                                       Background="#F44336" Foreground="White" 
+                                       ToolTip="Delete the selected race and all its classifications"/>
                                 <Button Content="Reprocess All Races" Command="{Binding ReprocessRaceCommand}" 
                                        Background="#FF9800" Foreground="White" 
                                        ToolTip="Reprocess all races in this event"/>
@@ -314,6 +317,7 @@
 
                             <!-- Races Grid -->
                             <DataGrid Grid.Row="1" ItemsSource="{Binding RacesInSelectedEvent}" 
+                                     SelectedItem="{Binding SelectedRace}"
                                      AutoGenerateColumns="False" 
                                      IsReadOnly="True"
                                      MaxHeight="150"
@@ -1011,22 +1015,44 @@
                                         Width="600" Height="30"/>
                             </StackPanel>
 
-                            <!-- Formatting Toolbar (Built-in from Extended.Wpf.Toolkit) -->
-                            <xctk:RichTextBoxFormatBar Grid.Row="2" 
-                                                       x:Name="EmailFormatBar"
-                                                       Target="{Binding ElementName=EmailBodyRichTextBox}"
-                                                       Margin="5"
-                                                       Background="#F5F5F5"
-                                                       Padding="5"/>
+                            <!-- Email Body Editor (WYSIWYG with TinyMCE) -->
+                            <Border Grid.Row="2" BorderBrush="#CCCCCC" BorderThickness="1" Margin="5" Grid.RowSpan="2">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
 
-                            <!-- Email Body (Extended.Wpf.Toolkit RichTextBox with HTML support) -->
-                            <Border Grid.Row="3" BorderBrush="#CCCCCC" BorderThickness="1" Margin="5">
-                                <xctk:RichTextBox x:Name="EmailBodyRichTextBox"
-                                                 VerticalScrollBarVisibility="Auto"
-                                                 MinHeight="300"
-                                                 FontFamily="Segoe UI"
-                                                 FontSize="12"
-                                                 Padding="10"/>
+                                    <!-- Toolbar -->
+                                            <Border Grid.Row="0" Background="#F5F5F5" Padding="10" BorderBrush="#CCCCCC" BorderThickness="0,0,0,1">
+                                                <StackPanel>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                                                        <TextBlock Text="✏️ Email Editor (WYSIWYG - CKEditor 4)" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Margin="0,0,15,0"/>
+                                                        <Button Content="🔄 Load Template" Click="LoadTemplate_Click" 
+                                                               Width="120" Height="28" Margin="0,0,5,0"
+                                                               ToolTip="Load the generated template into the editor"
+                                                               Background="#2196F3" Foreground="White"/>
+                                                        <Button Content="💾 Get HTML" Click="GetHtml_Click" 
+                                                               Width="100" Height="28" Margin="0,0,5,0"
+                                                               ToolTip="Get the HTML from the editor"
+                                                               Background="#4CAF50" Foreground="White"/>
+                                                        <Button Content="📊 Insert Table" Click="InsertTable_Click" 
+                                                               Width="110" Height="28" Margin="0,0,5,0"
+                                                               ToolTip="Insert a table at cursor position"
+                                                               Background="#FF9800" Foreground="White"/>
+                                                    </StackPanel>
+                                                    <TextBlock Text="ℹ️ Professional WYSIWYG Editor - 100% Free &amp; Open Source - Full table support" 
+                                                              FontStyle="Italic" Foreground="#666" FontSize="11"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                    <!-- WebView2 for TinyMCE Editor -->
+                                    <Border Grid.Row="1" BorderBrush="#E0E0E0" BorderThickness="1,0,0,0">
+                                        <Grid x:Name="WebViewContainer">
+                                            <!-- WebView2 will be added programmatically -->
+                                        </Grid>
+                                    </Border>
+                                </Grid>
                             </Border>
                         </Grid>
                     </GroupBox>

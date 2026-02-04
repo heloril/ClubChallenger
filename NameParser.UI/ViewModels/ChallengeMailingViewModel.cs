@@ -276,7 +276,7 @@ namespace NameParser.UI.ViewModels
                         .Distinct()
                         .OrderBy(d => d)
                         .ToList();
-                    var distanceStr = raceDistances.Any() ? string.Join(", ", raceDistances.Select(d => $"{d}km")) : (isFrench ? "À confirmer" : "TBA");
+                    var distanceStr = raceDistances.Any() ? string.Join(", ", raceDistances.Select(d => $"{d}km")) : "";// : (isFrench ? "À confirmer" : "TBA");
                     sb.AppendLine($"<li style='padding: 5px 0;'>• <strong>{race.Name}</strong> - {race.EventDate:dd/MM/yyyy} - {distanceStr}</li>");
                 }
 
@@ -317,7 +317,7 @@ namespace NameParser.UI.ViewModels
                             var rowStyle = c.Position % 2 == 0 ? "background-color: #f2f2f2;" : "";
                             sb.AppendLine($"<tr style='{rowStyle}'>");
                             sb.AppendLine($"<td style='padding: 8px;'>{c.Position}</td>");
-                            sb.AppendLine($"<td style='padding: 8px;'>{c.MemberFirstName} {c.MemberLastName}</td>");
+                            sb.AppendLine($"<td style='padding: 8px;'>{c.MemberFirstName} {c.MemberLastName.ToUpper()}</td>");
                             sb.AppendLine($"<td style='padding: 8px;'>{(c.RaceTime.HasValue ? c.RaceTime.Value.ToString(@"hh\:mm\:ss") : "-")}</td>");
                             sb.AppendLine($"<td style='padding: 8px;'><strong>{c.Points}</strong></td>");
                             sb.AppendLine("</tr>");
@@ -357,7 +357,7 @@ namespace NameParser.UI.ViewModels
 
                     sb.AppendLine($"<tr style='{rowStyle}'>");
                     sb.AppendLine($"<td style='padding: 8px;'>{medal} #{c.RankByPoints}</td>");
-                    sb.AppendLine($"<td style='padding: 8px;'><strong>{c.ChallengerFirstName} {c.ChallengerLastName}</strong></td>");
+                    sb.AppendLine($"<td style='padding: 8px;'><strong>{c.ChallengerFirstName} {c.ChallengerLastName.ToUpper()}</strong></td>");
                     sb.AppendLine($"<td style='padding: 8px;'><strong>{c.TotalPoints}</strong></td>");
                     sb.AppendLine($"<td style='padding: 8px;'>{c.RaceCount}</td>");
                     sb.AppendLine($"<td style='padding: 8px;'>{c.TotalKilometers}</td>");
@@ -370,7 +370,7 @@ namespace NameParser.UI.ViewModels
 
             // Footer
             sb.AppendLine("<hr style='border: 1px solid #FF9800; margin-top: 30px;'/>");
-            sb.AppendLine($"<p style='font-size: 12px; color: #666;'>{(isFrench ? "Continuez le beau travail ! À bientôt à la prochaine course ! 🏃💪" : "Keep up the great work! See you at the next race! 🏃💪")}</p>");
+            sb.AppendLine($"<p style='font-size: 12px; color: #666;'>{(isFrench ? "Bravo à tous ! À bientôt à la prochaine course ! 🏃💪" : "Keep up the great work! See you at the next race! 🏃💪")}</p>");
 
             return (subject, sb.ToString());
         }
@@ -422,27 +422,41 @@ namespace NameParser.UI.ViewModels
         {
             try
             {
-                // Get all challengers with emails
-                var challengerClassifications = _classificationRepository.GetChallengerClassification(SelectedChallenge.Year);
-                var challengerEmails = new List<string>();
+                // Read all challengers directly from Challenge.json
+                var challengeJsonPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Challenge.json");
 
-                foreach (var challenger in challengerClassifications)
+                if (!File.Exists(challengeJsonPath))
                 {
-                    var member = _memberRepository.GetMemberByName(challenger.ChallengerFirstName, challenger.ChallengerLastName);
-                    if (member != null && !string.IsNullOrWhiteSpace(member.Email))
-                    {
-                        challengerEmails.Add(member.Email);
-                    }
+                    MessageBox.Show("Challenge.json file not found. Please make sure the file exists in the application directory.", 
+                        "File Not Found", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
                 }
+
+                // Read and parse Challenge.json
+                var jsonContent = File.ReadAllText(challengeJsonPath);
+                var challengers = System.Text.Json.JsonSerializer.Deserialize<List<ChallengerRegistration>>(jsonContent);
+
+                if (challengers == null || !challengers.Any())
+                {
+                    MessageBox.Show("No challengers found in Challenge.json.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                // Extract unique emails (avoid duplicates)
+                var challengerEmails = challengers
+                    .Where(c => !string.IsNullOrWhiteSpace(c.Email))
+                    .Select(c => c.Email.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
 
                 if (!challengerEmails.Any())
                 {
-                    MessageBox.Show("No challengers with email addresses found.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("No challengers with email addresses found in Challenge.json.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
                 var result = MessageBox.Show(
-                    $"This will send the email to {challengerEmails.Count} challenger(s).\n\nRecipients:\n{string.Join("\n", challengerEmails.Take(10))}" +
+                    $"This will send the email to {challengerEmails.Count} challenger(s) from Challenge.json.\n\nRecipients:\n{string.Join("\n", challengerEmails.Take(10))}" +
                     (challengerEmails.Count > 10 ? $"\n... and {challengerEmails.Count - 10} more" : "") +
                     "\n\nAre you sure you want to continue?",
                     "Confirm Send",
@@ -463,9 +477,9 @@ namespace NameParser.UI.ViewModels
                         StatusMessage = $"Sending to {email}... ({successCount + failCount + 1}/{challengerEmails.Count})";
                         await SendEmailAsync(email, EmailSubject, EmailBody);
                         successCount++;
-                        
+
                         // Small delay to avoid rate limiting
-                        await System.Threading.Tasks.Task.Delay(500);
+                        await System.Threading.Tasks.Task.Delay(5000);
                     }
                     catch (Exception ex)
                     {
@@ -475,7 +489,7 @@ namespace NameParser.UI.ViewModels
                 }
 
                 StatusMessage = $"Sent {successCount} email(s), {failCount} failed.";
-                
+
                 var message = $"Email sending complete!\n\nSuccessful: {successCount}\nFailed: {failCount}";
                 if (errors.Any())
                 {
@@ -495,6 +509,17 @@ namespace NameParser.UI.ViewModels
             {
                 IsSending = false;
             }
+        }
+
+        // Helper class to deserialize Challenge.json
+        private class ChallengerRegistration
+        {
+            public string Timestamp { get; set; }
+            public string FirstName { get; set; }
+            public string LastName { get; set; }
+            public string Email { get; set; }
+            public string Téléphone { get; set; }
+            public string Team { get; set; }
         }
 
         private async System.Threading.Tasks.Task SendEmailAsync(string toEmail, string subject, string body)

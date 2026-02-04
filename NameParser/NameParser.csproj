@@ -81,6 +81,9 @@
     <Content Include="Courses\06.8.Liege.xlsx">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+    <None Update="Challenge.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Courses\10.12.Angleur.xlsx">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

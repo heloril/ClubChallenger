@@ -1371,7 +1371,7 @@ namespace NameParser.UI.ViewModels
                 {
                     string rowClass = classification.Position == 1 ? " class='winner'" : "";
                     string nameClass = classification.IsMember ? " class='member'" : "";
-                    string fullName = $"{classification.MemberFirstName} {classification.MemberLastName}";
+                    string fullName = $"{classification.MemberFirstName} {classification.MemberLastName.ToUpper()}";
 
                     writer.WriteLine($"            <tr{rowClass}>");
                     writer.WriteLine($"                <td>{rank}</td>");
@@ -1433,7 +1433,7 @@ namespace NameParser.UI.ViewModels
                 int rank = 1;
                 foreach (var classification in classifications)
                 {
-                    string fullName = $"{classification.MemberFirstName} {classification.MemberLastName}";
+                    string fullName = $"{classification.MemberFirstName} {classification.MemberLastName.ToUpper()}";
                     string marker = classification.Position == 1 ? "🏆" : (classification.IsMember ? "✓" : " ");
                     string team = classification.Team ?? "-";
                     string speed = classification.Speed.HasValue ? classification.Speed.Value.ToString("F2") : "-";
@@ -3006,7 +3006,7 @@ namespace NameParser.UI.ViewModels
                         writer.WriteLine($"            <tr{rowClass}>");
                         writer.WriteLine($"                <td>{c.Position}</td>");
                         writer.WriteLine($"                <td>{c.MemberFirstName}</td>");
-                        writer.WriteLine($"                <td>{c.MemberLastName}</td>");
+                        writer.WriteLine($"                <td>{c.MemberLastName.ToUpper()}</td>");
                         writer.WriteLine($"                <td>{c.Sex ?? "-"}</td>");
                         writer.WriteLine($"                <td>{c.PositionBySex?.ToString() ?? "-"}</td>");
                         writer.WriteLine($"                <td>{c.AgeCategory ?? "-"}</td>");
@@ -3093,7 +3093,7 @@ namespace NameParser.UI.ViewModels
                         col = 1;
                         worksheet.Cells[row, col++].Value = c.Position;
                         worksheet.Cells[row, col++].Value = c.MemberFirstName;
-                        worksheet.Cells[row, col++].Value = c.MemberLastName;
+                        worksheet.Cells[row, col++].Value = c.MemberLastName.ToUpper();
                         worksheet.Cells[row, col++].Value = c.Sex ?? "-";
                         worksheet.Cells[row, col++].Value = c.PositionBySex?.ToString() ?? "-";
                         worksheet.Cells[row, col++].Value = c.AgeCategory ?? "-";
@@ -3196,7 +3196,7 @@ namespace NameParser.UI.ViewModels
                         var dataRow = new TableRow();
                         AddWordTableCell(dataRow, c.Position.ToString());
                         AddWordTableCell(dataRow, c.MemberFirstName);
-                        AddWordTableCell(dataRow, c.MemberLastName);
+                        AddWordTableCell(dataRow, c.MemberLastName.ToUpper());
                         AddWordTableCell(dataRow, c.Sex ?? "-");
                         AddWordTableCell(dataRow, c.PositionBySex?.ToString() ?? "-");
                         AddWordTableCell(dataRow, c.AgeCategory ?? "-");
@@ -3300,7 +3300,7 @@ namespace NameParser.UI.ViewModels
                         var time = c.RaceTime.HasValue ? c.RaceTime.Value.ToString(@"hh\:mm\:ss") : "N/A";
                         var memberIndicator = c.IsMember ? "👤" : "  ";
                         var challengerIndicator = c.IsChallenger ? "⭐" : "  ";
-                        writer.WriteLine($"{medal} {c.Position,3}. {c.MemberFirstName} {c.MemberLastName,-25} {time} {memberIndicator}{challengerIndicator}");
+                        writer.WriteLine($"{medal} {c.Position,3}. {c.MemberFirstName} {c.MemberLastName.ToUpper(),-25} {time} {memberIndicator}{challengerIndicator}");
                     }
 
                     writer.WriteLine();
@@ -3534,7 +3534,7 @@ namespace NameParser.UI.ViewModels
                 {
                     writer.WriteLine("            <tr>");
                     writer.WriteLine($"                <td class='rank'>#{challenger.RankByPoints}</td>");
-                    writer.WriteLine($"                <td><strong>{challenger.ChallengerFirstName} {challenger.ChallengerLastName}</strong></td>");
+                    writer.WriteLine($"                <td><strong>{challenger.ChallengerFirstName} {challenger.ChallengerLastName.ToUpper()}</strong></td>");
                     writer.WriteLine($"                <td>{challenger.TotalPoints}</td>");
                     writer.WriteLine($"                <td>{challenger.RaceCount}</td>");
                     writer.WriteLine($"                <td>{challenger.TotalKilometers} km</td>");
@@ -3592,7 +3592,7 @@ namespace NameParser.UI.ViewModels
                 foreach (var challenger in ChallengerClassifications)
                 {
                     worksheet.Cells[row, 1].Value = challenger.RankByPoints;
-                    worksheet.Cells[row, 2].Value = $"{challenger.ChallengerFirstName} {challenger.ChallengerLastName}";
+                    worksheet.Cells[row, 2].Value = $"{challenger.ChallengerFirstName} {challenger.ChallengerLastName.ToUpper()}";
                     worksheet.Cells[row, 3].Value = challenger.TotalPoints;
                     worksheet.Cells[row, 4].Value = challenger.RaceCount;
                     worksheet.Cells[row, 5].Value = challenger.TotalKilometers;
@@ -3664,7 +3664,7 @@ namespace NameParser.UI.ViewModels
                 {
                     var dataRow = new TableRow();
                     AddWordTableCell(dataRow, $"#{challenger.RankByPoints}");
-                    AddWordTableCell(dataRow, $"{challenger.ChallengerFirstName} {challenger.ChallengerLastName}");
+                    AddWordTableCell(dataRow, $"{challenger.ChallengerFirstName} {challenger.ChallengerLastName.ToUpper()}");
                     AddWordTableCell(dataRow, challenger.TotalPoints.ToString());
                     AddWordTableCell(dataRow, challenger.RaceCount.ToString());
                     AddWordTableCell(dataRow, $"{challenger.TotalKilometers} km");
@@ -3689,14 +3689,14 @@ namespace NameParser.UI.ViewModels
             {
                 foreach (var challenger in ChallengerClassifications)
                 {
-                    var safeName = $"{challenger.ChallengerFirstName} {challenger.ChallengerLastName}";
+                    var safeName = $"{challenger.ChallengerFirstName} {challenger.ChallengerLastName.ToUpper()}";
                     // Excel worksheet names have max 31 chars and can't contain special chars
                     safeName = new string(safeName.Take(31).Where(c => !@":\/?*[]".Contains(c)).ToArray());
 
                     var worksheet = package.Workbook.Worksheets.Add(safeName);
 
                     // Challenger info
-                    worksheet.Cells[1, 1].Value = $"{challenger.ChallengerFirstName} {challenger.ChallengerLastName}";
+                    worksheet.Cells[1, 1].Value = $"{challenger.ChallengerFirstName} {challenger.ChallengerLastName.ToUpper()}";
                     worksheet.Cells[1, 1].Style.Font.Size = 16;
                     worksheet.Cells[1, 1].Style.Font.Bold = true;
 

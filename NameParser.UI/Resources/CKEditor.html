@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>CKEditor - Email Editor</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 10px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        #editor-container {
+            background-color: white;
+            padding: 0;
+            min-height: 500px;
+        }
+        .status-bar {
+            background-color: #e3f2fd;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="status-bar" id="statusBar">
+        📧 CKEditor ready - Click "Load Template" to start editing
+    </div>
+
+    <div id="editor-container">
+        <textarea id="editor" name="editor">
+            <h1>📧 Email Editor Ready</h1>
+            <p><strong>Instructions:</strong></p>
+            <ol>
+                <li>Click <strong>"Generate Email Template"</strong> in the main window</li>
+                <li>Click <strong>"🔄 Load Template"</strong> to load it here</li>
+                <li>Edit your email using the toolbar above</li>
+                <li>Changes are saved automatically</li>
+            </ol>
+            <p><em>CKEditor supports all HTML formatting including tables, lists, links, and more!</em></p>
+        </textarea>
+    </div>
+
+    <!-- CKEditor 4 from CDN (100% Free) -->
+    <script src="https://cdn.ckeditor.com/4.22.1/standard-all/ckeditor.js"></script>
+
+    <script>
+        var editor;
+        var isReady = false;
+        var autoSaveTimeout;
+
+        // Initialize CKEditor
+        CKEDITOR.replace('editor', {
+            // Toolbar configuration - optimized for email editing
+            toolbar: [
+                { name: 'document', items: ['Source', '-', 'Preview'] },
+                { name: 'clipboard', items: ['Cut', 'Copy', 'Paste', 'PasteText', 'PasteFromWord', '-', 'Undo', 'Redo'] },
+                { name: 'editing', items: ['Find', 'Replace', '-', 'SelectAll'] },
+                '/',
+                { name: 'basicstyles', items: ['Bold', 'Italic', 'Underline', 'Strike', 'Subscript', 'Superscript', '-', 'RemoveFormat'] },
+                { name: 'paragraph', items: ['NumberedList', 'BulletedList', '-', 'Outdent', 'Indent', '-', 'Blockquote'] },
+                { name: 'links', items: ['Link', 'Unlink'] },
+                { name: 'insert', items: ['Image', 'Table', 'HorizontalRule', 'SpecialChar'] },
+                '/',
+                { name: 'styles', items: ['Styles', 'Format', 'Font', 'FontSize'] },
+                { name: 'colors', items: ['TextColor', 'BGColor'] },
+                { name: 'align', items: ['JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock'] },
+                { name: 'tools', items: ['Maximize', 'ShowBlocks'] }
+            ],
+
+            // Height
+            height: 500,
+
+            // Email-friendly settings
+            removePlugins: 'elementspath',
+            resize_enabled: true,
+
+            // Allow all content (important for email HTML)
+            allowedContent: true,
+            extraAllowedContent: '*(*);*{*}',
+
+            // Default font
+            font_defaultLabel: 'Arial',
+            fontSize_defaultLabel: '14px',
+
+            // Content style
+            contentsCss: [
+                'body { font-family: Arial, sans-serif; font-size: 14px; padding: 20px; }',
+                'table { border-collapse: collapse; width: 100%; margin: 10px 0; }',
+                'th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }',
+                'th { background-color: #FF9800; color: white; font-weight: bold; }',
+                'tr:nth-child(even) { background-color: #f2f2f2; }'
+            ],
+
+            // Table settings
+            table_defaultCellPadding: 8,
+            table_defaultCellSpacing: 0,
+
+            // Events
+            on: {
+                instanceReady: function(evt) {
+                    editor = evt.editor;
+                    isReady = true;
+
+                    // Notify C# that editor is ready
+                    if (window.chrome && window.chrome.webview) {
+                        window.chrome.webview.postMessage({ 
+                            type: 'editorReady' 
+                        });
+                    }
+
+                    updateStatus('✅ Editor loaded successfully');
+                },
+
+                change: function(evt) {
+                    if (isReady) {
+                        // Debounce auto-save
+                        clearTimeout(autoSaveTimeout);
+                        autoSaveTimeout = setTimeout(function() {
+                            saveContent();
+                        }, 1000);
+                    }
+                },
+
+                blur: function(evt) {
+                    if (isReady) {
+                        saveContent();
+                    }
+                }
+            }
+        });
+
+        // Save content to C#
+        function saveContent() {
+            if (editor && window.chrome && window.chrome.webview) {
+                var html = editor.getData();
+                window.chrome.webview.postMessage({ 
+                    type: 'contentChanged', 
+                    html: html 
+                });
+                updateStatus('💾 Content saved');
+            }
+        }
+
+        // Set content from C# (called by C#)
+        function setContent(html) {
+            if (editor && html) {
+                editor.setData(html);
+                updateStatus('📧 Template loaded successfully');
+            }
+        }
+
+        // Get content (called by C#)
+        function getContent() {
+            if (editor) {
+                return editor.getData();
+            }
+            return '';
+        }
+
+        // Insert a table at cursor (called by C#)
+        function insertTable(rows, cols) {
+            if (editor) {
+                var tableHtml = '<table style="border-collapse: collapse; width: 100%; margin: 10px 0;">\n';
+
+                // Header row
+                tableHtml += '<thead>\n<tr style="background-color: #FF9800; color: white;">\n';
+                for (var i = 0; i < cols; i++) {
+                    tableHtml += '<th style="border: 1px solid #ddd; padding: 8px;">Header ' + (i + 1) + '</th>\n';
+                }
+                tableHtml += '</tr>\n</thead>\n';
+
+                // Body rows
+                tableHtml += '<tbody>\n';
+                for (var r = 0; r < rows - 1; r++) {
+                    var rowStyle = (r % 2 === 0) ? ' style="background-color: #f2f2f2;"' : '';
+                    tableHtml += '<tr' + rowStyle + '>\n';
+                    for (var c = 0; c < cols; c++) {
+                        tableHtml += '<td style="border: 1px solid #ddd; padding: 8px;">Cell</td>\n';
+                    }
+                    tableHtml += '</tr>\n';
+                }
+                tableHtml += '</tbody>\n';
+                tableHtml += '</table>\n<p>&nbsp;</p>\n';
+
+                editor.insertHtml(tableHtml);
+                updateStatus('📊 Table inserted');
+            }
+        }
+
+        // Update status bar
+        function updateStatus(message) {
+            var statusBar = document.getElementById('statusBar');
+            if (statusBar) {
+                statusBar.textContent = message;
+                setTimeout(function() {
+                    statusBar.textContent = '📧 CKEditor ready - Edit your email';
+                }, 3000);
+            }
+        }
+
+        // Log for debugging
+        console.log('CKEditor initialization script loaded');
+    </script>
+</body>
+</html>
