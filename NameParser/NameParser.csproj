@@ -39,9 +39,6 @@
   <ItemGroup>
     <None Include=".github\upgrades\scenarios\new-dotnet-version_68904e\assessment.md" />
     <None Include=".github\upgrades\scenarios\new-dotnet-version_68904e\plan.md" />
-    <None Update="Challenge.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
     <None Include="Contact Information %28Responses%29.xlsx">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

@@ -958,7 +958,7 @@
             </TabItem>
 
             <!-- Challenge Mailing Tab -->
-            <TabItem Header="📧 Challenge Mailing">
+            <TabItem Header="{Binding Localization[TabChallengeMailing]}">
                 <Grid Margin="20">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -967,9 +967,9 @@
                     </Grid.RowDefinitions>
 
                     <!-- Challenge Selection -->
-                    <GroupBox Grid.Row="0" Header="Challenge Selection" Margin="0,0,0,10">
+                    <GroupBox Grid.Row="0" Header="{Binding Localization[ChallengeSelection]}" Margin="0,0,0,10">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Select Challenge:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <TextBlock Text="{Binding Localization[SelectChallenge]}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
                             <ComboBox ItemsSource="{Binding ChallengeMailingViewModel.Challenges}"
                                      SelectedItem="{Binding ChallengeMailingViewModel.SelectedChallenge}"
                                      Width="300" Margin="0,0,10,0">
@@ -983,12 +983,12 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
-                            <Button Content="🔄 Refresh" Command="{Binding ChallengeMailingViewModel.LoadChallengesCommand}" Width="100"/>
+                            <Button Content="{Binding Localization[Refresh]}" Command="{Binding ChallengeMailingViewModel.LoadChallengesCommand}" Width="100"/>
                         </StackPanel>
                     </GroupBox>
 
                     <!-- Email Editor -->
-                    <GroupBox Grid.Row="1" Header="Email Content" Margin="0,0,0,10">
+                    <GroupBox Grid.Row="1" Header="{Binding Localization[EmailContent]}" Margin="0,0,0,10">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -998,15 +998,15 @@
                             </Grid.RowDefinitions>
 
                             <!-- Generate Template Button -->
-                            <Button Grid.Row="0" Content="✨ Generate Email Template" 
+                            <Button Grid.Row="0" Content="{Binding Localization[GenerateEmailTemplate]}" 
                                    Command="{Binding ChallengeMailingViewModel.GenerateTemplateCommand}"
                                    Background="#FF9800" Foreground="White" FontWeight="Bold"
                                    Height="40" Margin="5" HorizontalAlignment="Stretch"
-                                   ToolTip="Auto-generate email with next race, upcoming races, previous results, and current standings"/>
+                                   ToolTip="{Binding Localization[GenerateEmailTemplateTooltip]}"/>
 
                             <!-- Subject -->
                             <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="5">
-                                <TextBlock Text="Subject:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBlock Text="{Binding Localization[Subject]}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                 <TextBox Text="{Binding ChallengeMailingViewModel.EmailSubject, UpdateSourceTrigger=PropertyChanged}" 
                                         Width="600" Height="30"/>
                             </StackPanel>
@@ -1032,7 +1032,7 @@
                     </GroupBox>
 
                     <!-- Send Actions -->
-                    <GroupBox Grid.Row="2" Header="Send Actions">
+                    <GroupBox Grid.Row="2" Header="{Binding Localization[SendActions]}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -1041,14 +1041,14 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="Test Email:" FontWeight="Bold" VerticalAlignment="Center" Margin="5"/>
+                                <TextBlock Text="{Binding Localization[TestEmail]}" FontWeight="Bold" VerticalAlignment="Center" Margin="5"/>
                                 <TextBox Text="{Binding ChallengeMailingViewModel.TestEmailAddress, UpdateSourceTrigger=PropertyChanged}" 
-                                        Width="250" Margin="5" ToolTip="Enter test email address"/>
-                                <Button Content="📧 Send Test" Command="{Binding ChallengeMailingViewModel.SendTestEmailCommand}"
+                                        Width="250" Margin="5" ToolTip="{Binding Localization[TestEmailTooltip]}"/>
+                                <Button Content="{Binding Localization[SendTest]}" Command="{Binding ChallengeMailingViewModel.SendTestEmailCommand}"
                                        Background="#2196F3" Foreground="White" Margin="5" Width="120"/>
                             </StackPanel>
 
-                            <Button Grid.Column="1" Content="📨 Send to All Challengers" 
+                            <Button Grid.Column="1" Content="{Binding Localization[SendToAllChallengers]}" 
                                    Command="{Binding ChallengeMailingViewModel.SendToAllChallengersCommand}"
                                    Background="#4CAF50" Foreground="White" FontWeight="Bold"
                                    Width="200" Margin="5"/>
@@ -1056,7 +1056,7 @@
                             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
                                        Visibility="{Binding ChallengeMailingViewModel.IsSending, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <ProgressBar IsIndeterminate="True" Width="100" Height="20" Margin="5"/>
-                                <TextBlock Text="Sending..." VerticalAlignment="Center" FontStyle="Italic"/>
+                                <TextBlock Text="{Binding Localization[Sending]}" VerticalAlignment="Center" FontStyle="Italic"/>
                             </StackPanel>
                         </Grid>
                     </GroupBox>

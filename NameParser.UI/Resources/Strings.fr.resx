@@ -543,4 +543,329 @@ Vous pouvez maintenant copier le contenu et le coller dans votre email.</value>
   <data name="Best7CountedRaces" xml:space="preserve">
     <value>Meilleures 7 courses (comptées pour le classement par points)</value>
   </data>
+
+  <!-- Challenge Management Tab -->
+  <data name="TabChallengeManagement" xml:space="preserve">
+    <value>Gestion des Challenges</value>
+  </data>
+  <data name="ChallengeDetails" xml:space="preserve">
+    <value>Détails du Challenge</value>
+  </data>
+  <data name="ChallengeName" xml:space="preserve">
+    <value>Nom :</value>
+  </data>
+  <data name="StartDate" xml:space="preserve">
+    <value>Date de Début :</value>
+  </data>
+  <data name="EndDate" xml:space="preserve">
+    <value>Date de Fin :</value>
+  </data>
+  <data name="Description" xml:space="preserve">
+    <value>Description :</value>
+  </data>
+  <data name="Create" xml:space="preserve">
+    <value>Créer</value>
+  </data>
+  <data name="Update" xml:space="preserve">
+    <value>Mettre à jour</value>
+  </data>
+  <data name="Delete" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="Clear" xml:space="preserve">
+    <value>Effacer</value>
+  </data>
+  <data name="Challenges" xml:space="preserve">
+    <value>Challenges</value>
+  </data>
+  <data name="AssociatedRaceEvents" xml:space="preserve">
+    <value>Événements de Course Associés</value>
+  </data>
+  <data name="RemoveEvent" xml:space="preserve">
+    <value>Retirer l'Événement</value>
+  </data>
+  <data name="AvailableRaceEvents" xml:space="preserve">
+    <value>Événements de Course Disponibles (Ajouter au Challenge)</value>
+  </data>
+  <data name="EventName" xml:space="preserve">
+    <value>Nom de l'Événement</value>
+  </data>
+  <data name="Date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="Location" xml:space="preserve">
+    <value>Lieu</value>
+  </data>
+  <data name="AddToChallenge" xml:space="preserve">
+    <value>Ajouter au Challenge</value>
+  </data>
+  <data name="Start" xml:space="preserve">
+    <value>Début</value>
+  </data>
+
+  <!-- Race Event Management Tab -->
+  <data name="TabRaceEventManagement" xml:space="preserve">
+    <value>Gestion des Événements de Course</value>
+  </data>
+  <data name="RaceEventDetails" xml:space="preserve">
+    <value>Détails de l'Événement de Course</value>
+  </data>
+  <data name="EventDate" xml:space="preserve">
+    <value>Date de l'Événement :</value>
+  </data>
+  <data name="Website" xml:space="preserve">
+    <value>Site Web :</value>
+  </data>
+  <data name="CreateEvent" xml:space="preserve">
+    <value>Créer</value>
+  </data>
+  <data name="UpdateEvent" xml:space="preserve">
+    <value>Mettre à jour</value>
+  </data>
+  <data name="DeleteEvent" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="ClearForm" xml:space="preserve">
+    <value>Effacer</value>
+  </data>
+  <data name="ImportFromExcel" xml:space="preserve">
+    <value>Importer depuis Excel</value>
+  </data>
+  <data name="ImportMultipleRaceEvents" xml:space="preserve">
+    <value>Importer plusieurs événements de course depuis un fichier Excel</value>
+  </data>
+  <data name="ExpectedFormat" xml:space="preserve">
+    <value>Format attendu : Date | Nom de Course | Distance (km) | Lieu | Site Web | Description</value>
+  </data>
+  <data name="DistanceDecimalSupport" xml:space="preserve">
+    <value>• La distance supporte les valeurs décimales (ex: 10, 21.1, 42.195)</value>
+  </data>
+  <data name="MultipleRowsSameEvent" xml:space="preserve">
+    <value>• Plusieurs lignes avec le même événement = distances multiples pour le même événement</value>
+  </data>
+  <data name="ExportTemplate" xml:space="preserve">
+    <value>📄 Exporter le Modèle</value>
+  </data>
+  <data name="ExportTemplateTooltip" xml:space="preserve">
+    <value>Télécharger un modèle Excel avec des exemples et instructions</value>
+  </data>
+  <data name="DontHaveTemplate" xml:space="preserve">
+    <value>• Vous n'avez pas de modèle ? Cliquez sur 'Exporter le Modèle' pour commencer !</value>
+  </data>
+  <data name="Browse" xml:space="preserve">
+    <value>Parcourir...</value>
+  </data>
+  <data name="Import" xml:space="preserve">
+    <value>Importer</value>
+  </data>
+  <data name="RaceEvents" xml:space="preserve">
+    <value>Événements de Course</value>
+  </data>
+  <data name="Events" xml:space="preserve">
+    <value>Événements</value>
+  </data>
+  <data name="LinkedChallenges" xml:space="preserve">
+    <value>Challenges Liés</value>
+  </data>
+  <data name="Challenge" xml:space="preserve">
+    <value>Challenge</value>
+  </data>
+  <data name="AvailableDistances" xml:space="preserve">
+    <value>Distances Disponibles</value>
+  </data>
+  <data name="DistanceKm" xml:space="preserve">
+    <value>Distance (km)</value>
+  </data>
+  <data name="AddDistance" xml:space="preserve">
+    <value>Ajouter Distance :</value>
+  </data>
+  <data name="AddDistanceTooltip" xml:space="preserve">
+    <value>Entrer la distance en km (ex: 10 ou 21.1)</value>
+  </data>
+  <data name="Add" xml:space="preserve">
+    <value>Ajouter</value>
+  </data>
+  <data name="RemoveSelected" xml:space="preserve">
+    <value>Supprimer la Sélection</value>
+  </data>
+
+  <!-- Challenge Calendar Tab -->
+  <data name="TabChallengeCalendar" xml:space="preserve">
+    <value>Calendrier du Challenge</value>
+  </data>
+  <data name="SelectChallenge" xml:space="preserve">
+    <value>Sélectionner Challenge :</value>
+  </data>
+  <data name="Refresh" xml:space="preserve">
+    <value>🔄 Actualiser</value>
+  </data>
+  <data name="LoadCalendar" xml:space="preserve">
+    <value>📅 Charger le Calendrier</value>
+  </data>
+  <data name="ExportToPDF" xml:space="preserve">
+    <value>📄 Exporter en PDF</value>
+  </data>
+  <data name="ExportToWord" xml:space="preserve">
+    <value>📝 Exporter en Word</value>
+  </data>
+  <data name="ExportToExcel" xml:space="preserve">
+    <value>📊 Exporter en Excel</value>
+  </data>
+  <data name="ChallengeCalendarOrderedByDate" xml:space="preserve">
+    <value>Calendrier du Challenge - Événements de Course Ordonnés par Date</value>
+  </data>
+  <data name="RaceHashtag" xml:space="preserve">
+    <value>Course #</value>
+  </data>
+  <data name="Distances" xml:space="preserve">
+    <value>Distances</value>
+  </data>
+
+  <!-- Challenge Mailing Tab -->
+  <data name="TabChallengeMailing" xml:space="preserve">
+    <value>📧 Envoi Challenge</value>
+  </data>
+  <data name="ChallengeSelection" xml:space="preserve">
+    <value>Sélection du Challenge</value>
+  </data>
+  <data name="EmailContent" xml:space="preserve">
+    <value>Contenu de l'Email</value>
+  </data>
+  <data name="GenerateEmailTemplate" xml:space="preserve">
+    <value>✨ Générer le Modèle d'Email</value>
+  </data>
+  <data name="GenerateEmailTemplateTooltip" xml:space="preserve">
+    <value>Génération automatique d'email avec prochaine course, courses à venir, résultats précédents et classement actuel</value>
+  </data>
+  <data name="Subject" xml:space="preserve">
+    <value>Sujet :</value>
+  </data>
+  <data name="SendActions" xml:space="preserve">
+    <value>Actions d'Envoi</value>
+  </data>
+  <data name="TestEmail" xml:space="preserve">
+    <value>Email de Test :</value>
+  </data>
+  <data name="TestEmailTooltip" xml:space="preserve">
+    <value>Entrer l'adresse email de test</value>
+  </data>
+  <data name="SendTest" xml:space="preserve">
+    <value>📧 Envoyer Test</value>
+  </data>
+  <data name="SendToAllChallengers" xml:space="preserve">
+    <value>📨 Envoyer à Tous les Challengers</value>
+  </data>
+  <data name="Sending" xml:space="preserve">
+    <value>Envoi en cours...</value>
+  </data>
+
+  <!-- Export Menu Items -->
+  <data name="ExportToHTML" xml:space="preserve">
+    <value>Exporter en HTML (Email)</value>
+  </data>
+  <data name="ExportToExcelFile" xml:space="preserve">
+    <value>Exporter en Excel (.xlsx)</value>
+  </data>
+  <data name="ExportToWordFile" xml:space="preserve">
+    <value>Exporter en Word (.docx)</value>
+  </data>
+  <data name="ExportSummaryQuick" xml:space="preserve">
+    <value>Exporter Résumé (Rapide)</value>
+  </data>
+  <data name="ViewAllClassifications" xml:space="preserve">
+    <value>Voir Tous les Classements</value>
+  </data>
+  <data name="ReprocessAllRaces" xml:space="preserve">
+    <value>Retraiter Toutes les Courses</value>
+  </data>
+  <data name="ReprocessAllRacesTooltip" xml:space="preserve">
+    <value>Retraiter toutes les courses de cet événement</value>
+  </data>
+  <data name="ExportResults" xml:space="preserve">
+    <value>📤 Exporter Résultats ▼</value>
+  </data>
+  <data name="ExportResultsTooltip" xml:space="preserve">
+    <value>Exporter les résultats de course</value>
+  </data>
+  <data name="ShareToFacebook" xml:space="preserve">
+    <value>📱 Partager sur Facebook</value>
+  </data>
+  <data name="ShareRaceResultsToFacebook" xml:space="preserve">
+    <value>Partager les résultats de l'événement de course sur la page Facebook</value>
+  </data>
+  <data name="ExportChallengerClassification" xml:space="preserve">
+    <value>📤 Exporter ▼</value>
+  </data>
+  <data name="ExportChallengerClassificationTooltip" xml:space="preserve">
+    <value>Exporter le classement challenge</value>
+  </data>
+  <data name="SummaryHTML" xml:space="preserve">
+    <value>📊 Résumé (HTML)</value>
+  </data>
+  <data name="SummaryHTMLTooltip" xml:space="preserve">
+    <value>Exporter résumé avec Nom, Points, Courses et KMs uniquement</value>
+  </data>
+  <data name="SummaryExcel" xml:space="preserve">
+    <value>📊 Résumé (Excel)</value>
+  </data>
+  <data name="SummaryExcelTooltip" xml:space="preserve">
+    <value>Exporter feuille de calcul résumée avec statistiques de base</value>
+  </data>
+  <data name="SummaryWord" xml:space="preserve">
+    <value>📊 Résumé (Word)</value>
+  </data>
+  <data name="SummaryWordTooltip" xml:space="preserve">
+    <value>Exporter document résumé pour impression</value>
+  </data>
+  <data name="DetailedHTML" xml:space="preserve">
+    <value>📋 Détaillé (HTML)</value>
+  </data>
+  <data name="DetailedHTMLTooltip" xml:space="preserve">
+    <value>Exporter vue complète avec détails course par course</value>
+  </data>
+  <data name="DetailedExcel" xml:space="preserve">
+    <value>📋 Détaillé (Excel)</value>
+  </data>
+  <data name="DetailedExcelTooltip" xml:space="preserve">
+    <value>Exporter feuille de calcul détaillée avec toutes les informations de course</value>
+  </data>
+  <data name="DetailedWord" xml:space="preserve">
+    <value>📋 Détaillé (Word)</value>
+  </data>
+  <data name="DetailedWordTooltip" xml:space="preserve">
+    <value>Exporter document complet avec répartition course par course</value>
+  </data>
+  <data name="ShareChallengeToFacebook" xml:space="preserve">
+    <value>Partager le classement du challenge sur la page Facebook</value>
+  </data>
+
+  <!-- DataGrid Headers for Race Events -->
+  <data name="RaceName" xml:space="preserve">
+    <value>Nom de Course</value>
+  </data>
+  <data name="RaceNumber" xml:space="preserve">
+    <value>Course #</value>
+  </data>
+  <data name="ProcessedDate" xml:space="preserve">
+    <value>Date de Traitement</value>
+  </data>
+
+  <!-- Selection Prompts -->
+  <data name="SelectRaceEvent" xml:space="preserve">
+    <value>Sélectionner Événement de Course</value>
+  </data>
+  <data name="RacesInEventOrderedByDistance" xml:space="preserve">
+    <value>Courses dans l'Événement (Ordonnées par Distance)</value>
+  </data>
+
+  <!-- Additional UI Elements -->
+  <data name="ExportIcon" xml:space="preserve">
+    <value>Exporter</value>
+  </data>
+  <data name="RaceHashSymbol" xml:space="preserve">
+    <value>#</value>
+  </data>
+  <data name="SelectChallengePrompt" xml:space="preserve">
+    <value>Sélectionner un challenge pour voir le classement des challengers. Les points sont calculés à partir des 7 meilleures courses plus les kilomètres bonus.</value>
+  </data>
 </root>

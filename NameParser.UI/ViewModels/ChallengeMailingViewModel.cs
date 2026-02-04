@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -10,6 +11,7 @@ using Microsoft.Extensions.Configuration;
 using NameParser.Infrastructure.Data.Models;
 using NameParser.Infrastructure.Data;
 using NameParser.Infrastructure.Repositories;
+using NameParser.UI.Services;
 using MimeKit;
 using MailKit.Net.Smtp;
 
@@ -28,6 +30,7 @@ namespace NameParser.UI.ViewModels
         private readonly ClassificationRepository _classificationRepository;
         private readonly JsonMemberRepository _memberRepository;
         private readonly IConfiguration _configuration;
+        private readonly LocalizationService _localization;
 
         private ChallengeEntity _selectedChallenge;
         private string _emailSubject;
@@ -49,6 +52,7 @@ namespace NameParser.UI.ViewModels
             _raceRepository = new RaceRepository();
             _classificationRepository = new ClassificationRepository();
             _memberRepository = new JsonMemberRepository();
+            _localization = LocalizationService.Instance;
 
             // Load configuration from appsettings.json
             _configuration = new ConfigurationBuilder()
@@ -197,6 +201,7 @@ namespace NameParser.UI.ViewModels
         {
             var sb = new StringBuilder();
             var today = DateTime.Today;
+            var isFrench = _localization.CurrentCulture.TwoLetterISOLanguageName == "fr";
 
             // Get all race events for this challenge using proper repository method
             var challengeRaceEvents = _challengeRepository.GetRaceEventsForChallenge(SelectedChallenge.Id)
@@ -216,33 +221,33 @@ namespace NameParser.UI.ViewModels
                 .ToList();
 
             // Subject
-            var subject = $"{SelectedChallenge.Name} - Update {today:dd/MM/yyyy}";
+            var subject = $"{SelectedChallenge.Name} - {(isFrench ? "Mise à jour" : "Update")} {today.ToString(isFrench ? "dd/MM/yyyy" : "MM/dd/yyyy")}";
 
             // Header
             sb.AppendLine($"<h1 style='color: #FF9800;'>🏃 {SelectedChallenge.Name}</h1>");
-            sb.AppendLine($"<p style='font-size: 14px; color: #666;'>Challenge Update - {today:dd MMMM yyyy}</p>");
+            sb.AppendLine($"<p style='font-size: 14px; color: #666;'>{(isFrench ? "Mise à jour du Challenge" : "Challenge Update")} - {today.ToString(isFrench ? "dd MMMM yyyy" : "MMMM dd, yyyy", isFrench ? CultureInfo.GetCultureInfo("fr-FR") : CultureInfo.InvariantCulture)}</p>");
             sb.AppendLine("<hr style='border: 1px solid #FF9800;'/>");
 
             // Next Race Section
             if (nextRace != null)
             {
-                sb.AppendLine("<h2 style='color: #2196F3;'>📅 Next Race</h2>");
+                sb.AppendLine($"<h2 style='color: #2196F3;'>📅 {(isFrench ? "Prochaine Course" : "Next Race")}</h2>");
                 sb.AppendLine("<div style='background-color: #E3F2FD; padding: 15px; border-radius: 5px; margin: 10px 0;'>");
                 sb.AppendLine($"<h3 style='margin: 0;'>{nextRace.Name}</h3>");
-                sb.AppendLine($"<p><strong>📍 Date:</strong> {nextRace.EventDate:dddd, dd MMMM yyyy}</p>");
-                sb.AppendLine($"<p><strong>📍 Location:</strong> {nextRace.Location ?? "TBA"}</p>");
+                sb.AppendLine($"<p><strong>📍 {(isFrench ? "Date" : "Date")}:</strong> {nextRace.EventDate.ToString(isFrench ? "dddd dd MMMM yyyy" : "dddd, MMMM dd yyyy", isFrench ? CultureInfo.GetCultureInfo("fr-FR") : CultureInfo.InvariantCulture)}</p>");
+                sb.AppendLine($"<p><strong>📍 {(isFrench ? "Lieu" : "Location")}:</strong> {nextRace.Location ?? (isFrench ? "À confirmer" : "TBA")}</p>");
 
-                // Get distances for next race using GetRacesByRaceEvent
+                // Get distances for next race
                 var nextEventRaces = _raceRepository.GetRacesByRaceEvent(nextRace.Id);
                 if (nextEventRaces.Any())
                 {
                     var distances = nextEventRaces.Select(r => r.DistanceKm).Distinct().OrderBy(d => d);
-                    sb.AppendLine($"<p><strong>🏃 Distances:</strong> {string.Join(", ", distances.Select(d => $"{d} km"))}</p>");
+                    sb.AppendLine($"<p><strong>🏃 {(isFrench ? "Distances" : "Distances")}:</strong> {string.Join(", ", distances.Select(d => $"{d} km"))}</p>");
                 }
 
                 if (!string.IsNullOrEmpty(nextRace.WebsiteUrl))
                 {
-                    sb.AppendLine($"<p><strong>🌐 Website:</strong> <a href='{nextRace.WebsiteUrl}'>{nextRace.WebsiteUrl}</a></p>");
+                    sb.AppendLine($"<p><strong>🌐 {(isFrench ? "Site Web" : "Website")}:</strong> <a href='{nextRace.WebsiteUrl}'>{nextRace.WebsiteUrl}</a></p>");
                 }
 
                 if (!string.IsNullOrEmpty(nextRace.Description))
@@ -254,14 +259,14 @@ namespace NameParser.UI.ViewModels
             }
             else
             {
-                sb.AppendLine("<h2 style='color: #2196F3;'>📅 Next Race</h2>");
-                sb.AppendLine("<p>No upcoming races scheduled at this time.</p>");
+                sb.AppendLine($"<h2 style='color: #2196F3;'>📅 {(isFrench ? "Prochaine Course" : "Next Race")}</h2>");
+                sb.AppendLine($"<p>{(isFrench ? "Aucune course à venir prévue pour le moment." : "No upcoming races scheduled at this time.")}</p>");
             }
 
             // Upcoming Races Summary
             if (upcomingRaces.Any())
             {
-                sb.AppendLine("<h2 style='color: #2196F3;'>📆 Coming Soon</h2>");
+                sb.AppendLine($"<h2 style='color: #2196F3;'>📆 {(isFrench ? "À Venir" : "Coming Soon")}</h2>");
                 sb.AppendLine("<ul style='list-style-type: none; padding: 0;'>");
 
                 foreach (var race in upcomingRaces)
@@ -271,39 +276,38 @@ namespace NameParser.UI.ViewModels
                         .Distinct()
                         .OrderBy(d => d)
                         .ToList();
-                    var distanceStr = raceDistances.Any() ? string.Join(", ", raceDistances.Select(d => $"{d}km")) : "TBA";
+                    var distanceStr = raceDistances.Any() ? string.Join(", ", raceDistances.Select(d => $"{d}km")) : (isFrench ? "À confirmer" : "TBA");
                     sb.AppendLine($"<li style='padding: 5px 0;'>• <strong>{race.Name}</strong> - {race.EventDate:dd/MM/yyyy} - {distanceStr}</li>");
                 }
 
                 sb.AppendLine("</ul>");
             }
 
-            // Previous Race Results
+            // Previous Race Results - TOUS LES CHALLENGERS
             if (previousRace != null)
             {
-                sb.AppendLine("<h2 style='color: #4CAF50;'>🏆 Latest Results</h2>");
+                sb.AppendLine($"<h2 style='color: #4CAF50;'>🏆 {(isFrench ? "Derniers Résultats" : "Latest Results")}</h2>");
                 sb.AppendLine($"<h3>{previousRace.Name} - {previousRace.EventDate:dd/MM/yyyy}</h3>");
 
                 var previousRaces = _raceRepository.GetRacesByRaceEvent(previousRace.Id);
-                
+
                 foreach (var race in previousRaces)
                 {
                     sb.AppendLine($"<h4 style='color: #FF9800;'>{race.DistanceKm} km</h4>");
-                    
+
                     var classifications = _classificationRepository.GetClassificationsByRace(race.Id, null, true) // Only challengers
                         .OrderBy(c => c.Position)
-                        .Take(10)
-                        .ToList();
+                        .ToList(); // TOUS les challengers, pas seulement 10
 
                     if (classifications.Any())
                     {
                         sb.AppendLine("<table style='width: 100%; border-collapse: collapse; margin-bottom: 20px;'>");
                         sb.AppendLine("<thead>");
                         sb.AppendLine("<tr style='background-color: #FF9800; color: white;'>");
-                        sb.AppendLine("<th style='padding: 8px; text-align: left;'>Pos</th>");
-                        sb.AppendLine("<th style='padding: 8px; text-align: left;'>Name</th>");
-                        sb.AppendLine("<th style='padding: 8px; text-align: left;'>Time</th>");
-                        sb.AppendLine("<th style='padding: 8px; text-align: left;'>Points</th>");
+                        sb.AppendLine($"<th style='padding: 8px; text-align: left;'>{(isFrench ? "Pos" : "Pos")}</th>");
+                        sb.AppendLine($"<th style='padding: 8px; text-align: left;'>{(isFrench ? "Nom" : "Name")}</th>");
+                        sb.AppendLine($"<th style='padding: 8px; text-align: left;'>{(isFrench ? "Temps" : "Time")}</th>");
+                        sb.AppendLine($"<th style='padding: 8px; text-align: left;'>{(isFrench ? "Points" : "Points")}</th>");
                         sb.AppendLine("</tr>");
                         sb.AppendLine("</thead>");
                         sb.AppendLine("<tbody>");
@@ -325,24 +329,23 @@ namespace NameParser.UI.ViewModels
                 }
             }
 
-            // Current Challenge Standings
-            sb.AppendLine("<h2 style='color: #FF9800;'>🏆 Current Challenge Standings</h2>");
-            
+            // Current Challenge Standings - AFFICHER TOUS LES CHALLENGERS
+            sb.AppendLine($"<h2 style='color: #FF9800;'>🏆 {(isFrench ? "Classement Actuel du Challenge" : "Current Challenge Standings")}</h2>");
+
             var challengerClassifications = _classificationRepository.GetChallengerClassification(SelectedChallenge.Year)
                 .OrderBy(c => c.RankByPoints)
-                .Take(10)
-                .ToList();
+                .ToList(); // TOUS les challengers, pas seulement les 10 premiers
 
             if (challengerClassifications.Any())
             {
                 sb.AppendLine("<table style='width: 100%; border-collapse: collapse;'>");
                 sb.AppendLine("<thead>");
                 sb.AppendLine("<tr style='background-color: #FF9800; color: white;'>");
-                sb.AppendLine("<th style='padding: 8px; text-align: left;'>Rank</th>");
-                sb.AppendLine("<th style='padding: 8px; text-align: left;'>Name</th>");
-                sb.AppendLine("<th style='padding: 8px; text-align: left;'>Points</th>");
-                sb.AppendLine("<th style='padding: 8px; text-align: left;'>Races</th>");
-                sb.AppendLine("<th style='padding: 8px; text-align: left;'>KMs</th>");
+                sb.AppendLine($"<th style='padding: 8px; text-align: left;'>{(isFrench ? "Rang" : "Rank")}</th>");
+                sb.AppendLine($"<th style='padding: 8px; text-align: left;'>{(isFrench ? "Nom" : "Name")}</th>");
+                sb.AppendLine($"<th style='padding: 8px; text-align: left;'>{(isFrench ? "Points" : "Points")}</th>");
+                sb.AppendLine($"<th style='padding: 8px; text-align: left;'>{(isFrench ? "Courses" : "Races")}</th>");
+                sb.AppendLine($"<th style='padding: 8px; text-align: left;'>{(isFrench ? "KMs" : "KMs")}</th>");
                 sb.AppendLine("</tr>");
                 sb.AppendLine("</thead>");
                 sb.AppendLine("<tbody>");
@@ -351,7 +354,7 @@ namespace NameParser.UI.ViewModels
                 {
                     var rowStyle = c.RankByPoints % 2 == 0 ? "background-color: #f2f2f2;" : "";
                     var medal = c.RankByPoints == 1 ? "🥇" : c.RankByPoints == 2 ? "🥈" : c.RankByPoints == 3 ? "🥉" : "";
-                    
+
                     sb.AppendLine($"<tr style='{rowStyle}'>");
                     sb.AppendLine($"<td style='padding: 8px;'>{medal} #{c.RankByPoints}</td>");
                     sb.AppendLine($"<td style='padding: 8px;'><strong>{c.ChallengerFirstName} {c.ChallengerLastName}</strong></td>");
@@ -367,7 +370,7 @@ namespace NameParser.UI.ViewModels
 
             // Footer
             sb.AppendLine("<hr style='border: 1px solid #FF9800; margin-top: 30px;'/>");
-            sb.AppendLine("<p style='font-size: 12px; color: #666;'>Keep up the great work! See you at the next race! 🏃💪</p>");
+            sb.AppendLine($"<p style='font-size: 12px; color: #666;'>{(isFrench ? "Continuez le beau travail ! À bientôt à la prochaine course ! 🏃💪" : "Keep up the great work! See you at the next race! 🏃💪")}</p>");
 
             return (subject, sb.ToString());
         }
