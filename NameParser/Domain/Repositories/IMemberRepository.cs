@@ -7,5 +7,6 @@ namespace NameParser.Domain.Repositories
     {
         List<Member> GetAll();
         List<Member> GetMembersWithLastName();
+        Member GetMemberByName(string firstName, string lastName);
     }
 }

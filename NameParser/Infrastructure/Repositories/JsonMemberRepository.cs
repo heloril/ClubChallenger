@@ -57,6 +57,14 @@ namespace NameParser.Infrastructure.Repositories
                 ?? new List<Member>();
         }
 
+        public Member GetMemberByName(string firstName, string lastName)
+        {
+            var members = GetAll();
+            return members.FirstOrDefault(m => 
+                m.FirstName.Equals(firstName, StringComparison.OrdinalIgnoreCase) && 
+                m.LastName.Equals(lastName, StringComparison.OrdinalIgnoreCase));
+        }
+
         private string GetFilePath()
         {
             return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, _jsonFileName);

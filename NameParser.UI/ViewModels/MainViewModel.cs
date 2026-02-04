@@ -142,6 +142,7 @@ namespace NameParser.UI.ViewModels
             ChallengeManagementViewModel = new ChallengeManagementViewModel();
             RaceEventManagementViewModel = new RaceEventManagementViewModel();
             ChallengeCalendarViewModel = new ChallengeCalendarViewModel();
+            ChallengeMailingViewModel = new ChallengeMailingViewModel();
 
             LoadRaces();
             LoadRaceEventsForSelection();
@@ -371,6 +372,7 @@ namespace NameParser.UI.ViewModels
         public ChallengeManagementViewModel ChallengeManagementViewModel { get; }
         public RaceEventManagementViewModel RaceEventManagementViewModel { get; }
         public ChallengeCalendarViewModel ChallengeCalendarViewModel { get; }
+        public ChallengeMailingViewModel ChallengeMailingViewModel { get; }
 
         // Localization
         public LocalizationService Localization => LocalizationService.Instance;

@@ -361,3 +361,10 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Application settings with sensitive data
+appsettings.json
+appsettings.*.json
+!appsettings.example.json
+
+# Email test outputs
+NameParser.EmailTester/email_template_*.html
