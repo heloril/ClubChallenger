@@ -26,6 +26,7 @@ namespace NameParser.UI.ViewModels
     {
         private readonly RaceRepository _raceRepository;
         private readonly ClassificationRepository _classificationRepository;
+        private readonly FacebookService _facebookService;
         private string _selectedFilePath;
         private string _raceName;
         private int _raceNumber;
@@ -47,6 +48,16 @@ namespace NameParser.UI.ViewModels
         {
             _raceRepository = new RaceRepository();
             _classificationRepository = new ClassificationRepository();
+
+            // Initialize Facebook Service
+            var fbSettings = new FacebookSettings
+            {
+                AppId = System.Configuration.ConfigurationManager.AppSettings["Facebook:AppId"] ?? "",
+                AppSecret = System.Configuration.ConfigurationManager.AppSettings["Facebook:AppSecret"] ?? "",
+                PageId = System.Configuration.ConfigurationManager.AppSettings["Facebook:PageId"] ?? "",
+                PageAccessToken = System.Configuration.ConfigurationManager.AppSettings["Facebook:PageAccessToken"] ?? ""
+            };
+            _facebookService = new FacebookService(fbSettings);
 
             Year = DateTime.Now.Year;
             SelectedYear = DateTime.Now.Year;
@@ -83,6 +94,8 @@ namespace NameParser.UI.ViewModels
             ShowAllCommand = new RelayCommand(ExecuteShowAll);
             ShowOnlyChallengersCommand = new RelayCommand(ExecuteShowOnlyChallengers);
             ShowOnlyNonChallengersCommand = new RelayCommand(ExecuteShowOnlyNonChallengers);
+            ShareRaceToFacebookCommand = new RelayCommand(ExecuteShareRaceToFacebook, CanExecuteShareRaceToFacebook);
+            ShareChallengeToFacebookCommand = new RelayCommand(ExecuteShareChallengeToFacebook, CanExecuteShareChallengeToFacebook);
 
             Years = new ObservableCollection<int>();
             for (int i = 2020; i <= 2030; i++)
@@ -253,6 +266,8 @@ namespace NameParser.UI.ViewModels
         public ICommand ShowAllCommand { get; }
         public ICommand ShowOnlyChallengersCommand { get; }
         public ICommand ShowOnlyNonChallengersCommand { get; }
+        public ICommand ShareRaceToFacebookCommand { get; }
+        public ICommand ShareChallengeToFacebookCommand { get; }
 
         // Localization
         public LocalizationService Localization => LocalizationService.Instance;
@@ -2003,6 +2018,290 @@ namespace NameParser.UI.ViewModels
         private void ExecuteShowOnlyNonChallengers(object parameter)
         {
             IsChallengerFilter = false;
+        }
+
+        // Facebook Sharing Methods
+        private bool CanExecuteShareRaceToFacebook(object parameter)
+        {
+            return SelectedRace != null;
+        }
+
+        private async void ExecuteShareRaceToFacebook(object parameter)
+        {
+            if (SelectedRace == null) return;
+
+            try
+            {
+                var result = MessageBox.Show(
+                    $"Share '{SelectedRace.Name}' results to Facebook?\n\n" +
+                    "This will create TWO posts:\n" +
+                    "1. Full race results with top 3 finishers\n" +
+                    "2. Challenger results (all challengers participating)",
+                    "Share to Facebook",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result != MessageBoxResult.Yes) return;
+
+                StatusMessage = "Sharing to Facebook...";
+                IsProcessing = true;
+
+                // Get all classifications for this race
+                var allClassifications = _classificationRepository.GetClassificationsByRace(SelectedRace.Id, null, null);
+
+                // Post 1: Full Results Summary
+                var fullResultsSummary = BuildFullResultsSummary(SelectedRace, allClassifications);
+
+                // Post 2: Challenger Results (ALL challengers, regardless of points)
+                var challengerResults = allClassifications.Where(c => c.IsChallenger).ToList();
+                var challengerSummary = BuildChallengerResultsSummary(SelectedRace, challengerResults);
+
+                // Post both to Facebook
+                var results = await _facebookService.PostRaceWithLatestResultsAsync(
+                    $"{SelectedRace.Name} - {SelectedRace.Year}",
+                    fullResultsSummary,
+                    challengerSummary);
+
+                // Check results
+                var successCount = results.Count(r => r.Success);
+
+                if (successCount == results.Count)
+                {
+                    StatusMessage = $"✅ Successfully shared both posts to Facebook! " +
+                        $"Post 1 ID: {results[0].PostId}, Post 2 ID: {results[1].PostId}";
+                    MessageBox.Show(
+                        $"Both race results shared successfully to Facebook!\n\n" +
+                        $"Post 1 (Full Results) ID: {results[0].PostId}\n" +
+                        $"Post 2 (Challengers) ID: {results[1].PostId}",
+                        "Facebook Share Success",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+                else if (successCount > 0)
+                {
+                    var errors = string.Join("\n", results.Where(r => !r.Success).Select(r => r.ErrorMessage));
+                    StatusMessage = $"⚠️ Partially successful: {successCount} of {results.Count} posts shared.";
+                    MessageBox.Show(
+                        $"Partially successful: {successCount} of {results.Count} posts shared.\n\nErrors:\n{errors}",
+                        "Facebook Share Partial Success",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+                else
+                {
+                    var errors = string.Join("\n", results.Select(r => r.ErrorMessage));
+                    StatusMessage = $"❌ Failed to share to Facebook: {errors}";
+                    MessageBox.Show(
+                        $"Failed to share to Facebook:\n\n{errors}\n\nPlease check your Facebook configuration in App.config.",
+                        "Facebook Share Error",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error sharing to Facebook: {ex.Message}";
+                MessageBox.Show(
+                    $"Error sharing to Facebook:\n\n{ex.Message}",
+                    "Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            finally
+            {
+                IsProcessing = false;
+            }
+        }
+
+        private bool CanExecuteShareChallengeToFacebook(object parameter)
+        {
+            return ChallengerClassifications != null && ChallengerClassifications.Count > 0;
+        }
+
+        private async void ExecuteShareChallengeToFacebook(object parameter)
+        {
+            if (ChallengerClassifications == null || ChallengerClassifications.Count == 0) return;
+
+            try
+            {
+                var result = MessageBox.Show(
+                    $"Share Challenge {SelectedYear} standings to Facebook?\n\nThis will post the top challengers to your Facebook page.",
+                    "Share to Facebook",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result != MessageBoxResult.Yes) return;
+
+                StatusMessage = "Sharing challenge standings to Facebook...";
+                IsProcessing = true;
+
+                // Build summary
+                var summary = BuildChallengeSummary();
+
+                // Post to Facebook
+                var fbResult = await _facebookService.PostChallengeResultsAsync(
+                    $"Challenge {SelectedYear} Standings",
+                    summary,
+                    null);
+
+                if (fbResult.Success)
+                {
+                    StatusMessage = $"✅ Successfully shared challenge standings to Facebook! Post ID: {fbResult.PostId}";
+                    MessageBox.Show(
+                        $"Challenge standings shared successfully to Facebook!\n\nPost ID: {fbResult.PostId}",
+                        "Facebook Share Success",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+                else
+                {
+                    StatusMessage = $"❌ Failed to share to Facebook: {fbResult.ErrorMessage}";
+                    MessageBox.Show(
+                        $"Failed to share to Facebook:\n\n{fbResult.ErrorMessage}\n\nPlease check your Facebook configuration in App.config.",
+                        "Facebook Share Error",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error sharing challenge to Facebook: {ex.Message}";
+                MessageBox.Show(
+                    $"Error sharing challenge to Facebook:\n\n{ex.Message}",
+                    "Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            finally
+            {
+                IsProcessing = false;
+            }
+        }
+
+        private string BuildRaceSummary(RaceEntity race, List<ClassificationEntity> classifications)
+        {
+            var summary = $"Results for {race.Name} ({race.DistanceKm} km)\n\n";
+            summary += "🏆 Top 3 Finishers:\n";
+
+            var topResults = classifications.OrderBy(c => c.Position).Take(3).ToList();
+
+            for (int i = 0; i < topResults.Count && i < 3; i++)
+            {
+                var result = topResults[i];
+                var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : "🥉";
+                summary += $"{medal} {result.Position}. {result.MemberFirstName} {result.MemberLastName}";
+
+                if (result.RaceTime.HasValue)
+                {
+                    summary += $" - {result.RaceTime.Value:hh\\:mm\\:ss}";
+                }
+
+                if (!string.IsNullOrEmpty(result.Team))
+                {
+                    summary += $" ({result.Team})";
+                }
+
+                summary += "\n";
+            }
+
+            summary += $"\n👥 Total Participants: {classifications.Count}";
+
+            return summary;
+        }
+
+        private string BuildFullResultsSummary(RaceEntity race, List<ClassificationEntity> allClassifications)
+        {
+            var summary = $"📊 Full Challenge Results for {race.Name} ({race.DistanceKm} km)\n\n";
+
+            var topResults = allClassifications.OrderBy(c => c.Position).Take(3).ToList();
+            summary += "🏆 Top 3 Overall:\n";
+
+            for (int i = 0; i < topResults.Count && i < 3; i++)
+            {
+                var result = topResults[i];
+                var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : "🥉";
+                summary += $"{medal} {result.Position}. {result.MemberFirstName} {result.MemberLastName}";
+
+                if (result.RaceTime.HasValue)
+                {
+                    summary += $" - {result.RaceTime.Value:hh\\:mm\\:ss}";
+                }
+
+                summary += "\n";
+            }
+
+            var totalParticipants = allClassifications.Count;
+            var membersCount = allClassifications.Count(c => c.IsMember);
+            var challengersCount = allClassifications.Count(c => c.IsChallenger);
+
+            summary += $"\n👥 Total Participants: {totalParticipants}";
+            summary += $"\n🏃 Members: {membersCount}";
+            summary += $"\n⭐ Challengers: {challengersCount}";
+
+            return summary;
+        }
+
+        private string BuildChallengerResultsSummary(RaceEntity race, List<ClassificationEntity> results)
+        {
+            var summary = $"⭐ Challenger Results - {race.Name} ({race.DistanceKm} km)\n";
+            summary += $"All Challengers Participating in This Race\n\n";
+
+            var sortedResults = results.OrderByDescending(c => c.Points).ThenBy(c => c.Position).ToList();
+
+            if (sortedResults.Count == 0)
+            {
+                summary += "No challengers participated in this race.\n";
+                return summary;
+            }
+
+            summary += "🎯 Top Challengers:\n";
+            var topCount = Math.Min(10, sortedResults.Count);
+
+            for (int i = 0; i < topCount; i++)
+            {
+                var result = sortedResults[i];
+                var position = result.Position.HasValue ? $"#{result.Position}" : "-";
+
+                summary += $"⭐ {result.MemberFirstName} {result.MemberLastName}: {result.Points} pts ({position})";
+
+                if (result.RaceTime.HasValue)
+                {
+                    summary += $" - {result.RaceTime.Value:hh\\:mm\\:ss}";
+                }
+
+                summary += "\n";
+            }
+
+            if (sortedResults.Count > topCount)
+            {
+                summary += $"\n... and {sortedResults.Count - topCount} more challengers!\n";
+            }
+
+            summary += $"\n📈 Total challengers: {sortedResults.Count}";
+
+            return summary;
+        }
+
+        private string BuildChallengeSummary()
+        {
+            var summary = $"Challenge {SelectedYear} Standings\n\n";
+            summary += "🏆 Top Challengers (with >0 points):\n";
+
+            // Filter to only show challengers with points > 0
+            var challengersWithPoints = ChallengerClassifications.Where(c => c.TotalPoints > 0).ToList();
+            var topChallengers = challengersWithPoints.OrderBy(c => c.RankByPoints).Take(5).ToList();
+
+            for (int i = 0; i < topChallengers.Count && i < 5; i++)
+            {
+                var challenger = topChallengers[i];
+                var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : i == 2 ? "🥉" : "🔹";
+                summary += $"{medal} #{challenger.RankByPoints} {challenger.ChallengerFirstName} {challenger.ChallengerLastName}";
+                summary += $" - {challenger.TotalPoints} pts ({challenger.RaceCount} races)\n";
+            }
+
+            summary += $"\n👥 Total Challengers with points: {challengersWithPoints.Count}";
+
+            return summary;
         }
     }
 

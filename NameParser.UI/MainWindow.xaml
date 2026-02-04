@@ -211,6 +211,7 @@
                                 <Button Content="Download Results" Command="{Binding DownloadMultipleResultsCommand}" Background="#607D8B" Foreground="White" ToolTip="Download race results in TXT or Excel format"/>
                                 <Button Content="{Binding Localization[ExportForEmail]}" Command="{Binding ExportForEmailCommand}" Background="#4CAF50" Foreground="White"/>
                                 <Button Content="{Binding Localization[ExportMultipleRaces]}" Command="{Binding ExportMultipleForEmailCommand}" Background="#2196F3" Foreground="White"/>
+                                <Button Content="📱 Share to Facebook" Command="{Binding ShareRaceToFacebookCommand}" Background="#1877F2" Foreground="White" ToolTip="Share race results to Facebook page"/>
                                 <Button Content="{Binding Localization[DeleteRace]}" Command="{Binding DeleteRaceCommand}" Background="#F44336" Foreground="White"/>
                             </StackPanel>
 
@@ -363,6 +364,7 @@
                                           Width="100"
                                           Height="30"/>
                                 <Button Content="{Binding Localization[LoadChallengers]}" Command="{Binding ViewChallengerClassificationCommand}" Margin="10,0,10,0"/>
+                                <Button Content="📱 Share to Facebook" Command="{Binding ShareChallengeToFacebookCommand}" Background="#1877F2" Foreground="White" Margin="0,0,10,0" ToolTip="Share challenge standings to Facebook page"/>
                                 <Button Content="{Binding Localization[Export]}" Command="{Binding ExportChallengerClassificationCommand}" Background="#FF9800" Foreground="White"/>
                             </StackPanel>
                             <TextBlock Text="{Binding Localization[ChallengerClassificationNote]}" 

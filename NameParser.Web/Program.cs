@@ -5,6 +5,7 @@ using NameParser.Domain.Services;
 using NameParser.Infrastructure.Data;
 using NameParser.Infrastructure.Repositories;
 using NameParser.Infrastructure.Services;
+using NameParser.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,6 +27,12 @@ builder.Services.AddDbContext<RaceManagementContext>(options =>
     options.UseSqlServer(connectionString);
 });
 
+// Configure Facebook Settings
+builder.Services.Configure<FacebookSettings>(builder.Configuration.GetSection("Facebook"));
+
+// Register HttpClient for FacebookService
+builder.Services.AddHttpClient<FacebookService>();
+
 // Register application services
 builder.Services.AddScoped<IRaceResultRepository, ExcelRaceResultRepository>();
 builder.Services.AddScoped<IRaceResultRepository, PdfRaceResultRepository>();
@@ -38,6 +45,7 @@ builder.Services.AddScoped<PointsCalculationService>();
 builder.Services.AddScoped<ReportGenerationService>();
 builder.Services.AddScoped<FileStorageService>();
 builder.Services.AddScoped<FileOutputService>();
+builder.Services.AddScoped<FacebookService>();
 
 // Configure localization
 builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
