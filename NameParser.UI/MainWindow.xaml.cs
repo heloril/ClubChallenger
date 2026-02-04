@@ -20,5 +20,15 @@ namespace NameParser.UI
                 viewModel.SelectedRaces = dataGrid?.SelectedItems.Cast<object>().ToList();
             }
         }
+
+        private void ExportButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Open the context menu when the button is clicked
+            if (sender is Button button && button.ContextMenu != null)
+            {
+                button.ContextMenu.PlacementTarget = button;
+                button.ContextMenu.IsOpen = true;
+            }
+        }
     }
 }

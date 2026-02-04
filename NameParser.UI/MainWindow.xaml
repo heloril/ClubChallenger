@@ -271,8 +271,41 @@
                                 <Button Content="Reprocess All Races" Command="{Binding ReprocessRaceCommand}" 
                                        Background="#FF9800" Foreground="White" 
                                        ToolTip="Reprocess all races in this event"/>
-                                <Button Content="Export Results" Command="{Binding ExportForEmailCommand}" 
-                                       Background="#4CAF50" Foreground="White"/>
+
+                                <!-- Export Results Menu Button -->
+                                <Button Content="📤 Export Results ▼" Background="#4CAF50" Foreground="White" ToolTip="Export race results">
+                                    <Button.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Export to HTML (Email)" Command="{Binding ExportToHtmlCommand}">
+                                                <MenuItem.Icon>
+                                                    <TextBlock Text="📧" FontSize="14"/>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <MenuItem Header="Export to Excel (.xlsx)" Command="{Binding ExportToExcelCommand}">
+                                                <MenuItem.Icon>
+                                                    <TextBlock Text="📊" FontSize="14"/>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <MenuItem Header="Export to Word (.docx)" Command="{Binding ExportToWordCommand}">
+                                                <MenuItem.Icon>
+                                                    <TextBlock Text="📝" FontSize="14"/>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <Separator/>
+                                            <MenuItem Header="Export Summary (Quick)" Command="{Binding ExportSummaryCommand}">
+                                                <MenuItem.Icon>
+                                                    <TextBlock Text="⚡" FontSize="14"/>
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                        </ContextMenu>
+                                    </Button.ContextMenu>
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                            <EventSetter Event="Click" Handler="ExportButton_Click"/>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+
                                 <Button Content="📱 Share to Facebook" Command="{Binding ShareRaceToFacebookCommand}" 
                                        Background="#1877F2" Foreground="White" 
                                        ToolTip="Share race event results to Facebook page"/>
@@ -352,55 +385,6 @@
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Grid>
-                    </GroupBox>
-                </Grid>
-            </TabItem>
-
-            <!-- General Classification Tab -->
-            <TabItem Header="{Binding Localization[TabGeneralClassification]}">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- Year Selection and Filter -->
-                    <Border Grid.Row="0" Background="#E3F2FD" Padding="10" Margin="5">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding Localization[SelectYear]}" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                            <ComboBox ItemsSource="{Binding Years}" 
-                                      SelectedItem="{Binding SelectedYear}" 
-                                      Width="100"
-                                      Height="30"/>
-                            <Button Content="{Binding Localization[LoadClassification]}" Command="{Binding ViewGeneralClassificationCommand}" Margin="10,0,0,0"/>
-                            <TextBlock Text="{Binding Localization[GeneralClassificationNote]}" 
-                                       FontStyle="Italic" 
-                                       VerticalAlignment="Center" 
-                                       Margin="20,0,0,0"
-                                       Foreground="#666"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- General Classifications -->
-                    <GroupBox Grid.Row="1" Header="{Binding Localization[GeneralClassificationResults]}" Margin="5">
-                        <DataGrid ItemsSource="{Binding GeneralClassifications}" 
-                                  AutoGenerateColumns="False" 
-                                  IsReadOnly="True"
-                                  Margin="5">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="{Binding DataContext.Localization[Rank], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Rank}" Width="60"/>
-                                <DataGridTextColumn Header="{Binding DataContext.Localization[FirstName], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding MemberFirstName}" Width="*"/>
-                                <DataGridTextColumn Header="{Binding DataContext.Localization[LastName], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding MemberLastName}" Width="*"/>
-                                <DataGridTextColumn Header="{Binding DataContext.Localization[Team], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Team}" Width="120"/>
-                                <DataGridTextColumn Header="{Binding DataContext.Localization[TotalPoints], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding TotalPoints}" Width="100"/>
-                                <DataGridTextColumn Header="{Binding DataContext.Localization[Races], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding RaceCount}" Width="70"/>
-                                <DataGridTextColumn Header="{Binding DataContext.Localization[AvgPoints], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding AveragePoints}" Width="90"/>
-                                <DataGridTextColumn Header="{Binding DataContext.Localization[BestPosition], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding BestPosition}" Width="80"/>
-                                <DataGridTextColumn Header="{Binding DataContext.Localization[BestTime], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding BestRaceTime, Converter={StaticResource TimeSpanToStringConverter}}" Width="100"/>
-                                <DataGridTextColumn Header="{Binding DataContext.Localization[BestTimePerKm], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding BestTimePerKm, Converter={StaticResource TimeSpanToStringConverter}}" Width="90"/>
-                                <DataGridTextColumn Header="{Binding DataContext.Localization[TotalBonusKM], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding TotalBonusKm}" Width="110"/>
-                            </DataGrid.Columns>
-                        </DataGrid>
                     </GroupBox>
                 </Grid>
             </TabItem>

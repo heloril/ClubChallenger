@@ -19,6 +19,8 @@ using NameParser.UI.Services;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using OfficeOpenXml;
+using OfficeOpenXml.Style;
 
 namespace NameParser.UI.ViewModels
 {
@@ -40,7 +42,6 @@ namespace NameParser.UI.ViewModels
         private List<object> _selectedRaces;
         private RaceEventEntity _selectedRaceEventForClassification;
         private ObservableCollection<RaceEntity> _racesInSelectedEvent;
-        private bool _showGeneralClassification;
         private bool _showChallengerClassification;
         private int _selectedYear;
         private ChallengeEntity _selectedChallengeForClassification;
@@ -74,7 +75,6 @@ namespace NameParser.UI.ViewModels
             SelectedYear = DateTime.Now.Year;
             DistanceKm = 10;
             RaceNumber = 1;
-            ShowGeneralClassification = false;
 
             // Initialize language
             _selectedLanguage = "en";
@@ -96,9 +96,15 @@ namespace NameParser.UI.ViewModels
             RefreshRacesCommand = new RelayCommand(ExecuteRefreshRaces);
             DeleteRaceCommand = new RelayCommand(ExecuteDeleteRace, CanExecuteDeleteRace);
             ViewClassificationCommand = new RelayCommand(ExecuteViewClassification, CanExecuteViewClassification);
-            ViewGeneralClassificationCommand = new RelayCommand(ExecuteViewGeneralClassification);
             ViewChallengerClassificationCommand = new RelayCommand(ExecuteViewChallengerClassification);
             ExportChallengerClassificationCommand = new RelayCommand(ExecuteExportChallengerClassification, CanExecuteExportChallengerClassification);
+
+            // Export commands for Race Classification
+            ExportToHtmlCommand = new RelayCommand(ExecuteExportToHtml, CanExecuteExport);
+            ExportToExcelCommand = new RelayCommand(ExecuteExportToExcel, CanExecuteExport);
+            ExportToWordCommand = new RelayCommand(ExecuteExportToWord, CanExecuteExport);
+            ExportSummaryCommand = new RelayCommand(ExecuteExportSummary, CanExecuteExport);
+
             ShowRaceClassificationCommand = new RelayCommand(ExecuteShowRaceClassification);
             ShowOnlyMembersCommand = new RelayCommand(ExecuteShowOnlyMembers);
             ShowOnlyNonMembersCommand = new RelayCommand(ExecuteShowOnlyNonMembers);
@@ -118,7 +124,6 @@ namespace NameParser.UI.ViewModels
 
             Races = new ObservableCollection<RaceEntity>();
             Classifications = new ObservableCollection<ClassificationEntity>();
-            GeneralClassifications = new ObservableCollection<GeneralClassificationDto>();
             ChallengerClassifications = new ObservableCollection<ChallengerClassificationDto>();
             ChallengesForClassification = new ObservableCollection<ChallengeEntity>();
             RaceEventsForSelection = new ObservableCollection<RaceEventEntity>();
@@ -138,7 +143,6 @@ namespace NameParser.UI.ViewModels
         public ObservableCollection<int> Years { get; }
         public ObservableCollection<RaceEntity> Races { get; }
         public ObservableCollection<ClassificationEntity> Classifications { get; }
-        public ObservableCollection<GeneralClassificationDto> GeneralClassifications { get; }
         public ObservableCollection<ChallengerClassificationDto> ChallengerClassifications { get; }
         public ObservableCollection<ChallengeEntity> ChallengesForClassification { get; }
         public ObservableCollection<RaceEventEntity> RaceEventsForSelection { get; }
@@ -215,12 +219,6 @@ namespace NameParser.UI.ViewModels
             }
         }
 
-        public bool ShowGeneralClassification
-        {
-            get => _showGeneralClassification;
-            set => SetProperty(ref _showGeneralClassification, value);
-        }
-
         public bool ShowChallengerClassification
         {
             get => _showChallengerClassification;
@@ -233,10 +231,6 @@ namespace NameParser.UI.ViewModels
             set
             {
                 SetProperty(ref _selectedYear, value);
-                if (ShowGeneralClassification)
-                {
-                    LoadGeneralClassification();
-                }
             }
         }
 
@@ -337,7 +331,6 @@ namespace NameParser.UI.ViewModels
         public ICommand RefreshRacesCommand { get; }
         public ICommand DeleteRaceCommand { get; }
         public ICommand ViewClassificationCommand { get; }
-        public ICommand ViewGeneralClassificationCommand { get; }
         public ICommand ViewChallengerClassificationCommand { get; }
         public ICommand ExportChallengerClassificationCommand { get; }
         public ICommand ShowRaceClassificationCommand { get; }
@@ -350,6 +343,12 @@ namespace NameParser.UI.ViewModels
         public ICommand ShareChallengeToFacebookCommand { get; }
         public ICommand BrowseDistanceFileCommand { get; }
         public ICommand ProcessAllDistancesCommand { get; }
+
+        // Export commands for Race Classification
+        public ICommand ExportToHtmlCommand { get; }
+        public ICommand ExportToExcelCommand { get; }
+        public ICommand ExportToWordCommand { get; }
+        public ICommand ExportSummaryCommand { get; }
 
         // Child ViewModels for new tabs
         public ChallengeManagementViewModel ChallengeManagementViewModel { get; }
@@ -1166,7 +1165,7 @@ namespace NameParser.UI.ViewModels
                 {
                     runProperties.Append(new Bold());
                 }
-                runProperties.Append(new FontSize() { Val = fontSize.ToString() });
+                runProperties.Append(new DocumentFormat.OpenXml.Wordprocessing.FontSize() { Val = fontSize.ToString() });
 
                 foreach (var run in paragraph.Elements<Run>())
                 {
@@ -1759,7 +1758,6 @@ namespace NameParser.UI.ViewModels
 
             try
             {
-                ShowGeneralClassification = false;
                 ShowChallengerClassification = false;
 
                 Classifications.Clear();
@@ -1802,26 +1800,10 @@ namespace NameParser.UI.ViewModels
             }
         }
 
-        private void ExecuteViewGeneralClassification(object parameter)
-        {
-            try
-            {
-                ShowGeneralClassification = true;
-                LoadGeneralClassification();
-            }
-            catch (Exception ex)
-            {
-                StatusMessage = $"Error loading general classification: {ex.Message}";
-                MessageBox.Show($"Error loading general classification: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
         private void ExecuteShowRaceClassification(object parameter)
         {
-            ShowGeneralClassification = false;
             ShowChallengerClassification = false;
             Classifications.Clear();
-            GeneralClassifications.Clear();
             ChallengerClassifications.Clear();
             StatusMessage = "Switched to race classification view.";
         }
@@ -1830,7 +1812,6 @@ namespace NameParser.UI.ViewModels
         {
             try
             {
-                ShowGeneralClassification = false;
                 ShowChallengerClassification = true;
                 LoadChallengerClassification();
             }
@@ -1883,27 +1864,6 @@ namespace NameParser.UI.ViewModels
             catch (Exception ex)
             {
                 StatusMessage = $"Error loading challenges: {ex.Message}";
-            }
-        }
-
-        private void LoadGeneralClassification()
-        {
-            try
-            {
-                var generalClassifications = _classificationRepository.GetGeneralClassification(SelectedYear);
-
-                GeneralClassifications.Clear();
-                foreach (var classification in generalClassifications)
-                {
-                    GeneralClassifications.Add(classification);
-                }
-
-                StatusMessage = $"Loaded general classification for year {SelectedYear} ({generalClassifications.Count} members).";
-            }
-            catch (Exception ex)
-            {
-                StatusMessage = $"Error loading general classification: {ex.Message}";
-                MessageBox.Show($"Error loading general classification: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -2830,6 +2790,508 @@ namespace NameParser.UI.ViewModels
             finally
             {
                 IsProcessing = false;
+            }
+        }
+
+        // Export Methods for Race Classification
+
+        private bool CanExecuteExport(object parameter)
+        {
+            return SelectedRaceEventForClassification != null &&
+                   RacesInSelectedEvent != null &&
+                   RacesInSelectedEvent.Count > 0;
+        }
+
+        private void ExecuteExportToHtml(object parameter)
+        {
+            if (!CanExecuteExport(parameter)) return;
+
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "HTML Files (*.html)|*.html|All Files (*.*)|*.*",
+                    DefaultExt = "html",
+                    FileName = $"{SelectedRaceEventForClassification.Name.Replace(" ", "_")}_Results_{DateTime.Now:yyyyMMdd}.html"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    ExportRaceEventToHtml(saveFileDialog.FileName);
+                    StatusMessage = $"Exported to HTML: {Path.GetFileName(saveFileDialog.FileName)}";
+                    MessageBox.Show($"Results exported successfully!\n\nFile: {saveFileDialog.FileName}", 
+                        "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error exporting to HTML: {ex.Message}";
+                MessageBox.Show($"Error exporting to HTML: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExecuteExportToExcel(object parameter)
+        {
+            if (!CanExecuteExport(parameter)) return;
+
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "Excel Files (*.xlsx)|*.xlsx|All Files (*.*)|*.*",
+                    DefaultExt = "xlsx",
+                    FileName = $"{SelectedRaceEventForClassification.Name.Replace(" ", "_")}_Results_{DateTime.Now:yyyyMMdd}.xlsx"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    ExportRaceEventToExcel(saveFileDialog.FileName);
+                    StatusMessage = $"Exported to Excel: {Path.GetFileName(saveFileDialog.FileName)}";
+                    MessageBox.Show($"Results exported successfully!\n\nFile: {saveFileDialog.FileName}", 
+                        "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error exporting to Excel: {ex.Message}";
+                MessageBox.Show($"Error exporting to Excel: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExecuteExportToWord(object parameter)
+        {
+            if (!CanExecuteExport(parameter)) return;
+
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "Word Documents (*.docx)|*.docx|All Files (*.*)|*.*",
+                    DefaultExt = "docx",
+                    FileName = $"{SelectedRaceEventForClassification.Name.Replace(" ", "_")}_Results_{DateTime.Now:yyyyMMdd}.docx"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    ExportRaceEventToWord(saveFileDialog.FileName);
+                    StatusMessage = $"Exported to Word: {Path.GetFileName(saveFileDialog.FileName)}";
+                    MessageBox.Show($"Results exported successfully!\n\nFile: {saveFileDialog.FileName}", 
+                        "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error exporting to Word: {ex.Message}";
+                MessageBox.Show($"Error exporting to Word: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExecuteExportSummary(object parameter)
+        {
+            if (!CanExecuteExport(parameter)) return;
+
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "Text Files (*.txt)|*.txt|All Files (*.*)|*.*",
+                    DefaultExt = "txt",
+                    FileName = $"{SelectedRaceEventForClassification.Name.Replace(" ", "_")}_Summary_{DateTime.Now:yyyyMMdd}.txt"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    ExportRaceEventSummary(saveFileDialog.FileName);
+                    StatusMessage = $"Exported summary: {Path.GetFileName(saveFileDialog.FileName)}";
+                    MessageBox.Show($"Summary exported successfully!\n\nFile: {saveFileDialog.FileName}", 
+                        "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error exporting summary: {ex.Message}";
+                MessageBox.Show($"Error exporting summary: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExportRaceEventToHtml(string filePath)
+        {
+            using (var writer = new StreamWriter(filePath))
+            {
+                // Build filter description
+                var filterDesc = BuildFilterDescription();
+
+                writer.WriteLine("<!DOCTYPE html>");
+                writer.WriteLine("<html>");
+                writer.WriteLine("<head>");
+                writer.WriteLine("    <meta charset='utf-8'>");
+                writer.WriteLine($"    <title>{SelectedRaceEventForClassification.Name} - Results</title>");
+                writer.WriteLine("    <style>");
+                writer.WriteLine("        body { font-family: Arial, sans-serif; margin: 20px; }");
+                writer.WriteLine("        h1 { color: #2196F3; }");
+                writer.WriteLine("        h2 { color: #FF9800; margin-top: 30px; }");
+                writer.WriteLine("        table { border-collapse: collapse; width: 100%; margin-top: 20px; font-size: 12px; }");
+                writer.WriteLine("        th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }");
+                writer.WriteLine("        th { background-color: #2196F3; color: white; font-weight: bold; }");
+                writer.WriteLine("        tr:nth-child(even) { background-color: #f2f2f2; }");
+                writer.WriteLine("        .event-info { background-color: #E3F2FD; padding: 15px; margin: 20px 0; border-radius: 5px; }");
+                writer.WriteLine("        .member { background-color: #C8E6C9; }");
+                writer.WriteLine("        .challenger { font-weight: bold; }");
+                writer.WriteLine("    </style>");
+                writer.WriteLine("</head>");
+                writer.WriteLine("<body>");
+                writer.WriteLine($"    <h1>🏁 {SelectedRaceEventForClassification.Name}</h1>");
+                writer.WriteLine($"    <div class='event-info'>");
+                writer.WriteLine($"        <strong>Date:</strong> {SelectedRaceEventForClassification.EventDate:dd/MM/yyyy}<br/>");
+                writer.WriteLine($"        <strong>Location:</strong> {SelectedRaceEventForClassification.Location ?? "-"}<br/>");
+                if (!string.IsNullOrEmpty(filterDesc))
+                {
+                    writer.WriteLine($"        <strong>Filter:</strong> {filterDesc}<br/>");
+                }
+                writer.WriteLine($"        <strong>Generated:</strong> {DateTime.Now:yyyy-MM-dd HH:mm}<br/>");
+                writer.WriteLine($"    </div>");
+
+                foreach (var race in RacesInSelectedEvent.OrderBy(r => r.DistanceKm))
+                {
+                    // Apply filters
+                    var classifications = _classificationRepository.GetClassificationsByRace(race.Id, IsMemberFilter, IsChallengerFilter);
+
+                    writer.WriteLine($"    <h2>{race.DistanceKm} km - Race #{race.RaceNumber} ({classifications.Count} participants)</h2>");
+                    writer.WriteLine("    <table>");
+                    writer.WriteLine("        <thead>");
+                    writer.WriteLine("            <tr>");
+                    writer.WriteLine("                <th>Pos</th>");
+                    writer.WriteLine("                <th>First Name</th>");
+                    writer.WriteLine("                <th>Last Name</th>");
+                    writer.WriteLine("                <th>Sex</th>");
+                    writer.WriteLine("                <th>Pos/Sex</th>");
+                    writer.WriteLine("                <th>Category</th>");
+                    writer.WriteLine("                <th>Pos/Cat</th>");
+                    writer.WriteLine("                <th>Team</th>");
+                    writer.WriteLine("                <th>Points</th>");
+                    writer.WriteLine("                <th>Time</th>");
+                    writer.WriteLine("                <th>Time/km</th>");
+                    writer.WriteLine("                <th>Speed</th>");
+                    writer.WriteLine("                <th>Member</th>");
+                    writer.WriteLine("                <th>Challenger</th>");
+                    writer.WriteLine("                <th>Bonus KM</th>");
+                    writer.WriteLine("            </tr>");
+                    writer.WriteLine("        </thead>");
+                    writer.WriteLine("        <tbody>");
+
+                    foreach (var c in classifications.OrderBy(x => x.Position))
+                    {
+                        var rowClass = c.IsMember ? " class='member'" : "";
+                        if (c.IsChallenger) rowClass += " challenger";
+
+                        writer.WriteLine($"            <tr{rowClass}>");
+                        writer.WriteLine($"                <td>{c.Position}</td>");
+                        writer.WriteLine($"                <td>{c.MemberFirstName}</td>");
+                        writer.WriteLine($"                <td>{c.MemberLastName}</td>");
+                        writer.WriteLine($"                <td>{c.Sex ?? "-"}</td>");
+                        writer.WriteLine($"                <td>{c.PositionBySex?.ToString() ?? "-"}</td>");
+                        writer.WriteLine($"                <td>{c.AgeCategory ?? "-"}</td>");
+                        writer.WriteLine($"                <td>{c.PositionByCategory?.ToString() ?? "-"}</td>");
+                        writer.WriteLine($"                <td>{c.Team ?? "-"}</td>");
+                        writer.WriteLine($"                <td>{c.Points}</td>");
+                        writer.WriteLine($"                <td>{(c.RaceTime.HasValue ? c.RaceTime.Value.ToString(@"hh\:mm\:ss") : "-")}</td>");
+                        writer.WriteLine($"                <td>{(c.TimePerKm.HasValue ? c.TimePerKm.Value.ToString(@"mm\:ss") : "-")}</td>");
+                        writer.WriteLine($"                <td>{(c.Speed.HasValue ? c.Speed.Value.ToString("F2") : "-")} km/h</td>");
+                        writer.WriteLine($"                <td>{(c.IsMember ? "✓" : "")}</td>");
+                        writer.WriteLine($"                <td>{(c.IsChallenger ? "✓" : "")}</td>");
+                        writer.WriteLine($"                <td>{c.BonusKm}</td>");
+                        writer.WriteLine("            </tr>");
+                    }
+
+                    writer.WriteLine("        </tbody>");
+                    writer.WriteLine("    </table>");
+                }
+
+                writer.WriteLine("</body>");
+                writer.WriteLine("</html>");
+            }
+        }
+
+        private void ExportRaceEventToExcel(string filePath)
+        {
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+            using (var package = new ExcelPackage())
+            {
+                var filterDesc = BuildFilterDescription();
+
+                foreach (var race in RacesInSelectedEvent.OrderBy(r => r.DistanceKm))
+                {
+                    var worksheet = package.Workbook.Worksheets.Add($"{race.DistanceKm}km");
+                    // Apply filters
+                    var classifications = _classificationRepository.GetClassificationsByRace(race.Id, IsMemberFilter, IsChallengerFilter);
+
+                    // Title
+                    worksheet.Cells[1, 1].Value = $"{SelectedRaceEventForClassification.Name} - {race.DistanceKm} km";
+                    worksheet.Cells[1, 1, 1, 15].Merge = true;
+                    worksheet.Cells[1, 1].Style.Font.Size = 16;
+                    worksheet.Cells[1, 1].Style.Font.Bold = true;
+
+                    // Event info
+                    int infoRow = 2;
+                    worksheet.Cells[infoRow, 1].Value = $"Date: {SelectedRaceEventForClassification.EventDate:dd/MM/yyyy} | Race #{race.RaceNumber}";
+                    if (!string.IsNullOrEmpty(filterDesc))
+                    {
+                        worksheet.Cells[infoRow, 1].Value += $" | Filter: {filterDesc}";
+                    }
+                    worksheet.Cells[infoRow, 1, infoRow, 15].Merge = true;
+
+                    // Headers
+                    int headerRow = 4;
+                    int col = 1;
+                    worksheet.Cells[headerRow, col++].Value = "Position";
+                    worksheet.Cells[headerRow, col++].Value = "First Name";
+                    worksheet.Cells[headerRow, col++].Value = "Last Name";
+                    worksheet.Cells[headerRow, col++].Value = "Sex";
+                    worksheet.Cells[headerRow, col++].Value = "Pos/Sex";
+                    worksheet.Cells[headerRow, col++].Value = "Category";
+                    worksheet.Cells[headerRow, col++].Value = "Pos/Cat";
+                    worksheet.Cells[headerRow, col++].Value = "Team";
+                    worksheet.Cells[headerRow, col++].Value = "Points";
+                    worksheet.Cells[headerRow, col++].Value = "Time";
+                    worksheet.Cells[headerRow, col++].Value = "Time/km";
+                    worksheet.Cells[headerRow, col++].Value = "Speed";
+                    worksheet.Cells[headerRow, col++].Value = "Member";
+                    worksheet.Cells[headerRow, col++].Value = "Challenger";
+                    worksheet.Cells[headerRow, col++].Value = "Bonus KM";
+
+                    using (var range = worksheet.Cells[headerRow, 1, headerRow, 15])
+                    {
+                        range.Style.Font.Bold = true;
+                        range.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                        range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightBlue);
+                    }
+
+                    // Data
+                    int row = headerRow + 1;
+                    foreach (var c in classifications.OrderBy(x => x.Position))
+                    {
+                        col = 1;
+                        worksheet.Cells[row, col++].Value = c.Position;
+                        worksheet.Cells[row, col++].Value = c.MemberFirstName;
+                        worksheet.Cells[row, col++].Value = c.MemberLastName;
+                        worksheet.Cells[row, col++].Value = c.Sex ?? "-";
+                        worksheet.Cells[row, col++].Value = c.PositionBySex?.ToString() ?? "-";
+                        worksheet.Cells[row, col++].Value = c.AgeCategory ?? "-";
+                        worksheet.Cells[row, col++].Value = c.PositionByCategory?.ToString() ?? "-";
+                        worksheet.Cells[row, col++].Value = c.Team ?? "-";
+                        worksheet.Cells[row, col++].Value = c.Points;
+                        worksheet.Cells[row, col++].Value = c.RaceTime.HasValue ? c.RaceTime.Value.ToString(@"hh\:mm\:ss") : "-";
+                        worksheet.Cells[row, col++].Value = c.TimePerKm.HasValue ? c.TimePerKm.Value.ToString(@"mm\:ss") : "-";
+                        worksheet.Cells[row, col++].Value = c.Speed.HasValue ? c.Speed.Value.ToString("F2") : "-";
+                        worksheet.Cells[row, col++].Value = c.IsMember ? "✓" : "";
+                        worksheet.Cells[row, col++].Value = c.IsChallenger ? "✓" : "";
+                        worksheet.Cells[row, col++].Value = c.BonusKm;
+
+                        // Highlight members
+                        if (c.IsMember)
+                        {
+                            using (var rowRange = worksheet.Cells[row, 1, row, 15])
+                            {
+                                rowRange.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                                rowRange.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGreen);
+                            }
+                        }
+
+                        // Bold challengers
+                        if (c.IsChallenger)
+                        {
+                            using (var rowRange = worksheet.Cells[row, 1, row, 15])
+                            {
+                                rowRange.Style.Font.Bold = true;
+                            }
+                        }
+
+                        row++;
+                    }
+
+                    worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+                }
+
+                package.SaveAs(new FileInfo(filePath));
+            }
+        }
+
+        private void ExportRaceEventToWord(string filePath)
+        {
+            using (var document = WordprocessingDocument.Create(filePath, WordprocessingDocumentType.Document))
+            {
+                var mainPart = document.AddMainDocumentPart();
+                mainPart.Document = new Document();
+                var body = mainPart.Document.AppendChild(new Body());
+
+                var filterDesc = BuildFilterDescription();
+
+                // Title
+                var titlePara = body.AppendChild(new Paragraph());
+                var titleRun = titlePara.AppendChild(new Run());
+                titleRun.AppendChild(new Text($"{SelectedRaceEventForClassification.Name} - Results"));
+
+                // Event info
+                var infoPara = body.AppendChild(new Paragraph());
+                var infoRun = infoPara.AppendChild(new Run());
+                var infoText = $"Date: {SelectedRaceEventForClassification.EventDate:dd/MM/yyyy}";
+                if (!string.IsNullOrEmpty(filterDesc))
+                {
+                    infoText += $" | Filter: {filterDesc}";
+                }
+                infoRun.AppendChild(new Text(infoText));
+
+                foreach (var race in RacesInSelectedEvent.OrderBy(r => r.DistanceKm))
+                {
+                    // Apply filters
+                    var classifications = _classificationRepository.GetClassificationsByRace(race.Id, IsMemberFilter, IsChallengerFilter);
+
+                    // Distance header
+                    var distPara = body.AppendChild(new Paragraph());
+                    var distRun = distPara.AppendChild(new Run());
+                    distRun.AppendChild(new Text($"{race.DistanceKm} km - Race #{race.RaceNumber} ({classifications.Count} participants)"));
+
+                    // Create table
+                    var table = new Table();
+                    var headerRow = new TableRow();
+                    AddWordTableCell(headerRow, "Pos");
+                    AddWordTableCell(headerRow, "First Name");
+                    AddWordTableCell(headerRow, "Last Name");
+                    AddWordTableCell(headerRow, "Sex");
+                    AddWordTableCell(headerRow, "Pos/Sex");
+                    AddWordTableCell(headerRow, "Category");
+                    AddWordTableCell(headerRow, "Pos/Cat");
+                    AddWordTableCell(headerRow, "Team");
+                    AddWordTableCell(headerRow, "Points");
+                    AddWordTableCell(headerRow, "Time");
+                    AddWordTableCell(headerRow, "Time/km");
+                    AddWordTableCell(headerRow, "Speed");
+                    AddWordTableCell(headerRow, "Mbr");
+                    AddWordTableCell(headerRow, "Chl");
+                    AddWordTableCell(headerRow, "Bonus");
+                    table.AppendChild(headerRow);
+
+                    foreach (var c in classifications.OrderBy(x => x.Position))
+                    {
+                        var dataRow = new TableRow();
+                        AddWordTableCell(dataRow, c.Position.ToString());
+                        AddWordTableCell(dataRow, c.MemberFirstName);
+                        AddWordTableCell(dataRow, c.MemberLastName);
+                        AddWordTableCell(dataRow, c.Sex ?? "-");
+                        AddWordTableCell(dataRow, c.PositionBySex?.ToString() ?? "-");
+                        AddWordTableCell(dataRow, c.AgeCategory ?? "-");
+                        AddWordTableCell(dataRow, c.PositionByCategory?.ToString() ?? "-");
+                        AddWordTableCell(dataRow, c.Team ?? "-");
+                        AddWordTableCell(dataRow, c.Points.ToString());
+                        AddWordTableCell(dataRow, c.RaceTime.HasValue ? c.RaceTime.Value.ToString(@"hh\:mm\:ss") : "-");
+                        AddWordTableCell(dataRow, c.TimePerKm.HasValue ? c.TimePerKm.Value.ToString(@"mm\:ss") : "-");
+                        AddWordTableCell(dataRow, c.Speed.HasValue ? c.Speed.Value.ToString("F2") : "-");
+                        AddWordTableCell(dataRow, c.IsMember ? "✓" : "");
+                        AddWordTableCell(dataRow, c.IsChallenger ? "✓" : "");
+                        AddWordTableCell(dataRow, c.BonusKm.ToString());
+                        table.AppendChild(dataRow);
+                    }
+
+                    body.AppendChild(table);
+                    body.AppendChild(new Paragraph()); // Spacing
+                }
+
+                mainPart.Document.Save();
+            }
+        }
+
+        private void AddWordTableCell(TableRow row, string text)
+        {
+            var cell = new TableCell();
+            var para = new Paragraph();
+            var run = new Run();
+            run.AppendChild(new Text(text));
+            para.AppendChild(run);
+            cell.AppendChild(para);
+            row.AppendChild(cell);
+        }
+
+        private string BuildFilterDescription()
+        {
+            var filters = new List<string>();
+
+            if (IsMemberFilter.HasValue)
+            {
+                filters.Add(IsMemberFilter.Value ? "Members only" : "Non-members only");
+            }
+
+            if (IsChallengerFilter.HasValue)
+            {
+                filters.Add(IsChallengerFilter.Value ? "Challengers only" : "Non-challengers only");
+            }
+
+            if (filters.Count > 0)
+            {
+                filters.Add("Winner always shown");
+                return string.Join(", ", filters);
+            }
+
+            return string.Empty;
+        }
+
+        private void ExportRaceEventSummary(string filePath)
+        {
+            using (var writer = new StreamWriter(filePath))
+            {
+                var filterDesc = BuildFilterDescription();
+
+                writer.WriteLine($"═══════════════════════════════════════════════════════════");
+                writer.WriteLine($"  {SelectedRaceEventForClassification.Name.ToUpper()}");
+                writer.WriteLine($"═══════════════════════════════════════════════════════════");
+                writer.WriteLine();
+                writer.WriteLine($"Date: {SelectedRaceEventForClassification.EventDate:dd/MM/yyyy}");
+                writer.WriteLine($"Location: {SelectedRaceEventForClassification.Location ?? "-"}");
+                if (!string.IsNullOrEmpty(filterDesc))
+                {
+                    writer.WriteLine($"Filter: {filterDesc}");
+                }
+                writer.WriteLine($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm}");
+                writer.WriteLine();
+
+                foreach (var race in RacesInSelectedEvent.OrderBy(r => r.DistanceKm))
+                {
+                    // Apply filters
+                    var classifications = _classificationRepository.GetClassificationsByRace(race.Id, IsMemberFilter, IsChallengerFilter);
+
+                    writer.WriteLine($"───────────────────────────────────────────────────────────");
+                    writer.WriteLine($"🏃 {race.DistanceKm} km - Race #{race.RaceNumber}");
+                    writer.WriteLine($"───────────────────────────────────────────────────────────");
+                    writer.WriteLine($"Total Participants: {classifications.Count}");
+
+                    var memberCount = classifications.Count(c => c.IsMember);
+                    var challengerCount = classifications.Count(c => c.IsChallenger);
+                    if (memberCount > 0) writer.WriteLine($"Members: {memberCount}");
+                    if (challengerCount > 0) writer.WriteLine($"Challengers: {challengerCount}");
+
+                    writer.WriteLine();
+                    writer.WriteLine("🏆 Top 10:");
+                    writer.WriteLine();
+
+                    var topResults = classifications.OrderBy(c => c.Position).Take(10).ToList();
+                    for (int i = 0; i < topResults.Count; i++)
+                    {
+                        var c = topResults[i];
+                        var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : i == 2 ? "🥉" : "  ";
+                        var time = c.RaceTime.HasValue ? c.RaceTime.Value.ToString(@"hh\:mm\:ss") : "N/A";
+                        var memberIndicator = c.IsMember ? "👤" : "  ";
+                        var challengerIndicator = c.IsChallenger ? "⭐" : "  ";
+                        writer.WriteLine($"{medal} {c.Position,3}. {c.MemberFirstName} {c.MemberLastName,-25} {time} {memberIndicator}{challengerIndicator}");
+                    }
+
+                    writer.WriteLine();
+                }
+
+                writer.WriteLine($"═══════════════════════════════════════════════════════════");
+                writer.WriteLine();
+                writer.WriteLine("Legend:");
+                writer.WriteLine("  👤 = Club Member");
+                writer.WriteLine("  ⭐ = Challenger");
             }
         }
     }
