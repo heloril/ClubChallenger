@@ -70,7 +70,7 @@
             <TabItem Header="{Binding Localization[TabUploadProcess]}">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="400"/>
+                        <ColumnDefinition Width="450"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
@@ -79,57 +79,72 @@
                         <StackPanel>
                             <TextBlock Text="{Binding Localization[RaceInformation]}" FontSize="18" FontWeight="Bold" Margin="5,5,5,15"/>
 
-                            <!-- File Upload -->
-                            <GroupBox Header="{Binding Localization[ExcelFile]}" Margin="5">
+                            <!-- Race Event Selection -->
+                            <GroupBox Header="Race Event" Margin="5">
                                 <StackPanel>
-                                    <TextBox Text="{Binding SelectedFilePath, Mode=OneWay}" IsReadOnly="True" 
-                                             Background="#F5F5F5" ToolTip="Selected file path"/>
-                                    <Button Content="{Binding Localization[BrowseFile]}" Command="{Binding UploadFileCommand}" 
-                                            HorizontalAlignment="Stretch"/>
+                                    <TextBlock Text="Select the race event for which you want to upload results:" 
+                                              TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                    <ComboBox ItemsSource="{Binding RaceEventsForSelection}"
+                                             SelectedItem="{Binding SelectedUploadRaceEvent}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="Bold"/>
+                                                    <TextBlock Text=" - " Margin="5,0"/>
+                                                    <TextBlock Text="{Binding EventDate, StringFormat=\{0:dd/MM/yyyy\}}"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
                                 </StackPanel>
                             </GroupBox>
 
-                            <!-- Race Details -->
-                            <GroupBox Header="{Binding Localization[RaceDetails]}" Margin="5">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
+                            <!-- Distance Files Upload -->
+                            <GroupBox Header="Upload Results by Distance" Margin="5">
+                                <StackPanel>
+                                    <TextBlock Text="Select a file for each distance (only distances with files will be processed):" 
+                                              TextWrapping="Wrap" Margin="0,0,0,10" FontStyle="Italic"/>
 
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Localization[RaceName]}"/>
-                                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding RaceName, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <ItemsControl ItemsSource="{Binding AvailableDistancesForUpload}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="#E0E0E0" BorderThickness="1" Padding="10" Margin="0,5,0,5" Background="#FAFAFA">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
+                                                        </Grid.RowDefinitions>
 
-                                    <CheckBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" 
-                                              Content="{Binding Localization[HorsChallenge]}" 
-                                              IsChecked="{Binding IsHorsChallenge}"
-                                              Margin="5" 
-                                              ToolTip="{Binding Localization[HorsChallengeTooltip]}"/>
+                                                        <TextBlock Grid.Row="0" FontWeight="Bold" FontSize="14" Margin="0,0,0,5">
+                                                            <Run Text="Distance: "/>
+                                                            <Run Text="{Binding DistanceKm, Mode=OneWay, StringFormat={}{0} km}" Foreground="#2196F3"/>
+                                                        </TextBlock>
 
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding Localization[Year]}"/>
-                                    <ComboBox Grid.Row="2" Grid.Column="1" 
-                                              ItemsSource="{Binding Years}" 
-                                              SelectedItem="{Binding Year}"
-                                              IsEnabled="{Binding IsHorsChallenge, Converter={StaticResource InverseBoolConverter}}"/>
+                                                        <TextBox Grid.Row="1" Text="{Binding FileName, Mode=OneWay}" IsReadOnly="True" 
+                                                                Background="#FFFFFF" Margin="0,0,0,5"/>
 
-                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="{Binding Localization[RaceNumber]}"/>
-                                    <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding RaceNumber, UpdateSourceTrigger=PropertyChanged}"/>
-
-                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="{Binding Localization[Distance]}"/>
-                                    <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding DistanceKm, UpdateSourceTrigger=PropertyChanged}"/>
-                                </Grid>
+                                                        <StackPanel Grid.Row="2" Orientation="Horizontal">
+                                                            <Button Content="Browse File..." 
+                                                                   Command="{Binding DataContext.BrowseDistanceFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                   CommandParameter="{Binding}"
+                                                                   Width="100" Margin="0,0,5,0"/>
+                                                            <TextBlock Text="{Binding StatusMessage}" 
+                                                                      VerticalAlignment="Center" 
+                                                                      FontStyle="Italic"
+                                                                      Foreground="#666"/>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
                             </GroupBox>
 
                             <!-- Process Button -->
-                            <Button Content="{Binding Localization[ProcessRace]}" Command="{Binding ProcessRaceCommand}" 
-                                    FontSize="16" FontWeight="Bold" Height="40" Margin="5,15,5,5"
+                            <Button Content="Process All Selected Races" Command="{Binding ProcessAllDistancesCommand}" 
+                                    FontSize="16" FontWeight="Bold" Height="45" Margin="5,15,5,5"
                                     Background="#4CAF50" Foreground="White">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -157,29 +172,47 @@
                             <TextBlock Text="{Binding Localization[Instructions]}" FontSize="18" FontWeight="Bold" Margin="5,5,5,15"/>
 
                             <TextBlock TextWrapping="Wrap" Margin="5">
-                                <Run Text="{Binding Localization[Instruction1], Mode=OneWay}" FontWeight="Bold"/>
+                                <Run Text="How to Process Race Results" FontWeight="Bold" FontSize="16"/>
                                 <LineBreak/><LineBreak/>
-                                <Run Text="{Binding Localization[Instruction2], Mode=OneWay}"/>
+
+                                <Run Text="Step 1: Select Race Event" FontWeight="Bold"/>
                                 <LineBreak/>
-                                <Run Text="{Binding Localization[Instruction2a], Mode=OneWay}"/>
-                                <LineBreak/>
-                                <Run Text="{Binding Localization[Instruction2b], Mode=OneWay}"/>
-                                <LineBreak/>
-                                <Run Text="{Binding Localization[Instruction2c], Mode=OneWay}"/>
-                                <LineBreak/>
-                                <Run Text="{Binding Localization[Instruction2d], Mode=OneWay}"/>
+                                <Run Text="Choose the race event from the dropdown. The event should already be created in the Race Event Management tab."/>
                                 <LineBreak/><LineBreak/>
-                                <Run Text="{Binding Localization[Instruction3], Mode=OneWay}" FontWeight="Bold"/>
+
+                                <Run Text="Step 2: Upload Result Files" FontWeight="Bold"/>
+                                <LineBreak/>
+                                <Run Text="For each distance that has results, click 'Browse File...' and select the Excel (.xlsx) or PDF file containing the race results."/>
+                                <LineBreak/>
+                                <Run Text="• You can upload results for one or more distances"/>
+                                <LineBreak/>
+                                <Run Text="• Distances without files will be skipped"/>
                                 <LineBreak/><LineBreak/>
-                                <Run Text="{Binding Localization[Instruction4], Mode=OneWay}"/>
+
+                                <Run Text="Step 3: Process" FontWeight="Bold"/>
+                                <LineBreak/>
+                                <Run Text="Click 'Process All Selected Races' to process all distances that have files attached."/>
+                                <LineBreak/><LineBreak/>
+
+                                <Run Text="Note:" FontWeight="Bold"/>
+                                <LineBreak/>
+                                <Run Text="• All races from the same event will share the same race number"/>
+                                <LineBreak/>
+                                <Run Text="• The system automatically assigns the next available race number"/>
+                                <LineBreak/>
+                                <Run Text="• Race year is taken from the event date"/>
                             </TextBlock>
 
-                            <Border Background="#FFF9C4" Padding="10" Margin="5,20,5,5">
+                            <Border Background="#E3F2FD" Padding="10" Margin="5,20,5,5">
                                 <StackPanel>
-                                    <TextBlock Text="{Binding Localization[RequirementsTitle]}" FontWeight="Bold"/>
-                                    <TextBlock Text="{Binding Localization[Requirement1]}" TextWrapping="Wrap" Margin="5,5,5,0"/>
-                                    <TextBlock Text="{Binding Localization[Requirement2]}" TextWrapping="Wrap" Margin="5,2,5,0"/>
-                                    <TextBlock Text="{Binding Localization[Requirement3]}" TextWrapping="Wrap" Margin="5,2,5,0"/>
+                                    <TextBlock Text="File Format Requirements" FontWeight="Bold" FontSize="14"/>
+                                    <TextBlock Text="Excel (.xlsx) files:" FontWeight="SemiBold" Margin="0,5,0,0"/>
+                                    <TextBlock Text="• Must contain columns: Position, Name, Time" TextWrapping="Wrap" Margin="5,2,5,0"/>
+                                    <TextBlock Text="• Optional: Team, Category, Sex" TextWrapping="Wrap" Margin="5,2,5,0"/>
+
+                                    <TextBlock Text="PDF files:" FontWeight="SemiBold" Margin="0,10,0,0"/>
+                                    <TextBlock Text="• Must be text-based (not scanned images)" TextWrapping="Wrap" Margin="5,2,5,0"/>
+                                    <TextBlock Text="• Should follow standard race result format" TextWrapping="Wrap" Margin="5,2,5,0"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -473,6 +506,274 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </ScrollViewer>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+
+            <!-- Challenge Management Tab -->
+            <TabItem Header="Challenge Management">
+                <Grid Margin="20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Challenge Form -->
+                    <GroupBox Header="Challenge Details" Grid.Row="0" Margin="0,0,0,10">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Text="Name:" Grid.Row="0" Grid.Column="0"/>
+                                <TextBox Text="{Binding ChallengeManagementViewModel.ChallengeName, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1"/>
+
+                                <TextBlock Text="Year:" Grid.Row="0" Grid.Column="2"/>
+                                <TextBox Text="{Binding ChallengeManagementViewModel.ChallengeYear}" Grid.Row="0" Grid.Column="3"/>
+
+                                <TextBlock Text="Start Date:" Grid.Row="1" Grid.Column="0"/>
+                                <DatePicker SelectedDate="{Binding ChallengeManagementViewModel.StartDate}" Grid.Row="1" Grid.Column="1"/>
+
+                                <TextBlock Text="End Date:" Grid.Row="1" Grid.Column="2"/>
+                                <DatePicker SelectedDate="{Binding ChallengeManagementViewModel.EndDate}" Grid.Row="1" Grid.Column="3"/>
+
+                                <TextBlock Text="Description:" Grid.Row="2" Grid.Column="0"/>
+                                <TextBox Text="{Binding ChallengeManagementViewModel.ChallengeDescription}" Grid.Row="2" Grid.Column="1"
+                                         Grid.ColumnSpan="3" Height="60" TextWrapping="Wrap" AcceptsReturn="True"/>
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="5,10,5,5">
+                                <Button Content="Create" Command="{Binding ChallengeManagementViewModel.CreateChallengeCommand}" Width="80"/>
+                                <Button Content="Update" Command="{Binding ChallengeManagementViewModel.UpdateChallengeCommand}" Width="80"/>
+                                <Button Content="Delete" Command="{Binding ChallengeManagementViewModel.DeleteChallengeCommand}" Width="80" Background="#F44336" Foreground="White"/>
+                                <Button Content="Clear" Command="{Binding ChallengeManagementViewModel.ClearFormCommand}" Width="80"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <!-- Challenge List and Race Events -->
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Challenges List -->
+                        <GroupBox Header="Challenges" Grid.Column="0" Margin="0,0,5,0">
+                            <DataGrid ItemsSource="{Binding ChallengeManagementViewModel.Challenges}"
+                                     SelectedItem="{Binding ChallengeManagementViewModel.SelectedChallenge}"
+                                     AutoGenerateColumns="False" IsReadOnly="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                                    <DataGridTextColumn Header="Year" Binding="{Binding Year}" Width="60"/>
+                                    <DataGridTextColumn Header="Start" Binding="{Binding StartDate, StringFormat=\{0:dd/MM/yyyy\}}" Width="90"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </GroupBox>
+
+                        <!-- Associated Race Events -->
+                        <GroupBox Header="Associated Race Events" Grid.Column="1" Margin="5,0,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <DataGrid ItemsSource="{Binding ChallengeManagementViewModel.AssociatedRaceEvents}"
+                                         SelectedItem="{Binding ChallengeManagementViewModel.SelectedAssociatedEvent}"
+                                         AutoGenerateColumns="False" IsReadOnly="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Event Name" Binding="{Binding Name}" Width="*"/>
+                                        <DataGridTextColumn Header="Date" Binding="{Binding EventDate, StringFormat=\{0:dd/MM/yyyy\}}" Width="90"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <Button Content="Remove Event" Command="{Binding ChallengeManagementViewModel.RemoveRaceEventCommand}"
+                                       Grid.Row="1" HorizontalAlignment="Right" Width="120" Margin="5"/>
+                            </Grid>
+                        </GroupBox>
+                    </Grid>
+
+                    <!-- Available Race Events -->
+                    <GroupBox Header="Available Race Events (Add to Challenge)" Grid.Row="2" Margin="0,10,0,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <DataGrid ItemsSource="{Binding ChallengeManagementViewModel.AvailableRaceEvents}"
+                                     SelectedItem="{Binding ChallengeManagementViewModel.SelectedAvailableEvent}"
+                                     AutoGenerateColumns="False" IsReadOnly="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Event Name" Binding="{Binding Name}" Width="*"/>
+                                    <DataGridTextColumn Header="Date" Binding="{Binding EventDate, StringFormat=\{0:dd/MM/yyyy\}}" Width="100"/>
+                                    <DataGridTextColumn Header="Location" Binding="{Binding Location}" Width="150"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <Button Content="Add to Challenge" Command="{Binding ChallengeManagementViewModel.AddRaceEventCommand}"
+                                   Grid.Row="1" HorizontalAlignment="Right" Width="130" Margin="5"/>
+                        </Grid>
+                    </GroupBox>
+                </Grid>
+            </TabItem>
+
+            <!-- Race Event Management Tab -->
+            <TabItem Header="Race Event Management">
+                <Grid Margin="20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Race Event Form -->
+                    <GroupBox Header="Race Event Details" Grid.Row="0" Margin="0,0,0,10">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Text="Event Name:" Grid.Row="0" Grid.Column="0"/>
+                                <TextBox Text="{Binding RaceEventManagementViewModel.EventName, UpdateSourceTrigger=PropertyChanged}" Grid.Row="0" Grid.Column="1"/>
+
+                                <TextBlock Text="Event Date:" Grid.Row="0" Grid.Column="2"/>
+                                <DatePicker SelectedDate="{Binding RaceEventManagementViewModel.EventDate}" Grid.Row="0" Grid.Column="3"/>
+
+                                <TextBlock Text="Location:" Grid.Row="1" Grid.Column="0"/>
+                                <TextBox Text="{Binding RaceEventManagementViewModel.Location}" Grid.Row="1" Grid.Column="1"/>
+
+                                <TextBlock Text="Website:" Grid.Row="1" Grid.Column="2"/>
+                                <TextBox Text="{Binding RaceEventManagementViewModel.WebsiteUrl}" Grid.Row="1" Grid.Column="3"/>
+
+                                <TextBlock Text="Description:" Grid.Row="2" Grid.Column="0"/>
+                                <TextBox Text="{Binding RaceEventManagementViewModel.Description}" Grid.Row="2" Grid.Column="1"
+                                         Grid.ColumnSpan="3" Height="60" TextWrapping="Wrap" AcceptsReturn="True"/>
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="5,10,5,5">
+                                <Button Content="Create" Command="{Binding RaceEventManagementViewModel.CreateEventCommand}" Width="80"/>
+                                <Button Content="Update" Command="{Binding RaceEventManagementViewModel.UpdateEventCommand}" Width="80"/>
+                                <Button Content="Delete" Command="{Binding RaceEventManagementViewModel.DeleteEventCommand}" Width="80" Background="#F44336" Foreground="White"/>
+                                <Button Content="Clear" Command="{Binding RaceEventManagementViewModel.ClearFormCommand}" Width="80"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <!-- Excel Import -->
+                    <GroupBox Header="Import from Excel" Grid.Row="1" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock TextWrapping="Wrap" Margin="5">
+                                <Run Text="Import multiple race events from Excel file" FontWeight="Bold"/>
+                                <LineBreak/>
+                                <Run Text="Expected format: Date | Race Name | Distance (km) | Location | Website | Description"/>
+                                <LineBreak/>
+                                <Run Text="• Distance supports decimal values (e.g., 10, 21.1, 42.195)" FontStyle="Italic"/>
+                                <LineBreak/>
+                                <Run Text="• Multiple rows with same event = multiple distances for same event" FontStyle="Italic"/>
+                            </TextBlock>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox Text="{Binding RaceEventManagementViewModel.ImportFilePath}" IsReadOnly="True" Margin="5" Background="#F5F5F5"/>
+                                <Button Content="Browse..." Command="{Binding RaceEventManagementViewModel.BrowseImportFileCommand}"
+                                       Grid.Column="1" Width="80"/>
+                                <Button Content="Import" Command="{Binding RaceEventManagementViewModel.ImportFromExcelCommand}"
+                                       Grid.Column="2" Width="80" Background="#4CAF50" Foreground="White"/>
+                            </Grid>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <!-- Race Events List -->
+                    <GroupBox Header="Race Events" Grid.Row="2">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <GroupBox Header="Events" Grid.Column="0" Margin="0,0,5,0">
+                                <DataGrid ItemsSource="{Binding RaceEventManagementViewModel.RaceEvents}"
+                                         SelectedItem="{Binding RaceEventManagementViewModel.SelectedRaceEvent}"
+                                         AutoGenerateColumns="False" IsReadOnly="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Event Name" Binding="{Binding Name}" Width="*"/>
+                                        <DataGridTextColumn Header="Date" Binding="{Binding EventDate, StringFormat=\{0:dd/MM/yyyy\}}" Width="100"/>
+                                        <DataGridTextColumn Header="Location" Binding="{Binding Location}" Width="120"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </GroupBox>
+
+                            <GroupBox Header="Linked Challenges" Grid.Column="1" Margin="2.5,0,2.5,0">
+                                <DataGrid ItemsSource="{Binding RaceEventManagementViewModel.AssociatedChallenges}"
+                                         AutoGenerateColumns="False" IsReadOnly="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Challenge" Binding="{Binding Name}" Width="*"/>
+                                        <DataGridTextColumn Header="Year" Binding="{Binding Year}" Width="50"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </GroupBox>
+
+                            <GroupBox Header="Available Distances" Grid.Column="2" Margin="5,0,0,0">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <DataGrid ItemsSource="{Binding RaceEventManagementViewModel.AvailableDistances}"
+                                             SelectedItem="{Binding RaceEventManagementViewModel.SelectedDistance}"
+                                             AutoGenerateColumns="False" IsReadOnly="True"
+                                             Grid.Row="0">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Distance (km)" Binding="{Binding DistanceKm}" Width="*"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+
+                                    <StackPanel Grid.Row="1" Margin="5">
+                                        <TextBlock Text="Add Distance:" FontWeight="Bold" Margin="0,5,0,2"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Text="{Binding RaceEventManagementViewModel.NewDistanceKm, UpdateSourceTrigger=PropertyChanged}" 
+                                                    Grid.Column="0" Margin="0,0,5,0"
+                                                    ToolTip="Enter distance in km (e.g., 10 or 21.1)"/>
+                                            <Button Content="Add" Command="{Binding RaceEventManagementViewModel.AddDistanceCommand}"
+                                                   Grid.Column="1" Width="50"/>
+                                        </Grid>
+                                        <Button Content="Remove Selected" Command="{Binding RaceEventManagementViewModel.RemoveDistanceCommand}"
+                                               HorizontalAlignment="Stretch" Margin="0,5,0,0" Background="#F44336" Foreground="White"/>
+                                    </StackPanel>
+                                </Grid>
+                            </GroupBox>
+                        </Grid>
                     </GroupBox>
                 </Grid>
             </TabItem>

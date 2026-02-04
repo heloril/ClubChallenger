@@ -26,6 +26,7 @@ namespace NameParser.UI.ViewModels
     {
         private readonly RaceRepository _raceRepository;
         private readonly ClassificationRepository _classificationRepository;
+        private readonly RaceEventRepository _raceEventRepository;
         private readonly FacebookService _facebookService;
         private string _selectedFilePath;
         private string _raceName;
@@ -43,11 +44,16 @@ namespace NameParser.UI.ViewModels
         private bool? _isMemberFilter;
         private bool? _isChallengerFilter;
         private string _selectedLanguage;
+        private RaceEventEntity _selectedRaceEvent;
+        private RaceEventEntity _selectedUploadRaceEvent;
+        private RaceDistanceUploadModel _selectedDistanceUpload;
+        private int _nextRaceNumber = 1;
 
         public MainViewModel()
         {
             _raceRepository = new RaceRepository();
             _classificationRepository = new ClassificationRepository();
+            _raceEventRepository = new RaceEventRepository();
 
             // Initialize Facebook Service
             var fbSettings = new FacebookSettings
@@ -96,6 +102,8 @@ namespace NameParser.UI.ViewModels
             ShowOnlyNonChallengersCommand = new RelayCommand(ExecuteShowOnlyNonChallengers);
             ShareRaceToFacebookCommand = new RelayCommand(ExecuteShareRaceToFacebook, CanExecuteShareRaceToFacebook);
             ShareChallengeToFacebookCommand = new RelayCommand(ExecuteShareChallengeToFacebook, CanExecuteShareChallengeToFacebook);
+            BrowseDistanceFileCommand = new RelayCommand<RaceDistanceUploadModel>(ExecuteBrowseDistanceFile);
+            ProcessAllDistancesCommand = new RelayCommand(ExecuteProcessAllDistances, CanExecuteProcessAllDistances);
 
             Years = new ObservableCollection<int>();
             for (int i = 2020; i <= 2030; i++)
@@ -107,8 +115,15 @@ namespace NameParser.UI.ViewModels
             Classifications = new ObservableCollection<ClassificationEntity>();
             GeneralClassifications = new ObservableCollection<GeneralClassificationDto>();
             ChallengerClassifications = new ObservableCollection<ChallengerClassificationDto>();
+            RaceEventsForSelection = new ObservableCollection<RaceEventEntity>();
+            AvailableDistancesForUpload = new ObservableCollection<RaceDistanceUploadModel>();
+
+            // Initialize child ViewModels for new tabs
+            ChallengeManagementViewModel = new ChallengeManagementViewModel();
+            RaceEventManagementViewModel = new RaceEventManagementViewModel();
 
             LoadRaces();
+            LoadRaceEventsForSelection();
         }
 
         public ObservableCollection<int> Years { get; }
@@ -116,6 +131,8 @@ namespace NameParser.UI.ViewModels
         public ObservableCollection<ClassificationEntity> Classifications { get; }
         public ObservableCollection<GeneralClassificationDto> GeneralClassifications { get; }
         public ObservableCollection<ChallengerClassificationDto> ChallengerClassifications { get; }
+        public ObservableCollection<RaceEventEntity> RaceEventsForSelection { get; }
+        public ObservableCollection<RaceDistanceUploadModel> AvailableDistancesForUpload { get; }
 
         public string SelectedFilePath
         {
@@ -248,6 +265,31 @@ namespace NameParser.UI.ViewModels
             }
         }
 
+        public RaceEventEntity SelectedRaceEvent
+        {
+            get => _selectedRaceEvent;
+            set => SetProperty(ref _selectedRaceEvent, value);
+        }
+
+        public RaceEventEntity SelectedUploadRaceEvent
+        {
+            get => _selectedUploadRaceEvent;
+            set
+            {
+                if (SetProperty(ref _selectedUploadRaceEvent, value))
+                {
+                    LoadAvailableDistancesForUpload();
+                    ((RelayCommand)ProcessAllDistancesCommand)?.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
+        public RaceDistanceUploadModel SelectedDistanceUpload
+        {
+            get => _selectedDistanceUpload;
+            set => SetProperty(ref _selectedDistanceUpload, value);
+        }
+
         public ICommand UploadFileCommand { get; }
         public ICommand ProcessRaceCommand { get; }
         public ICommand ReprocessRaceCommand { get; }
@@ -268,6 +310,12 @@ namespace NameParser.UI.ViewModels
         public ICommand ShowOnlyNonChallengersCommand { get; }
         public ICommand ShareRaceToFacebookCommand { get; }
         public ICommand ShareChallengeToFacebookCommand { get; }
+        public ICommand BrowseDistanceFileCommand { get; }
+        public ICommand ProcessAllDistancesCommand { get; }
+
+        // Child ViewModels for new tabs
+        public ChallengeManagementViewModel ChallengeManagementViewModel { get; }
+        public RaceEventManagementViewModel RaceEventManagementViewModel { get; }
 
         // Localization
         public LocalizationService Localization => LocalizationService.Instance;
@@ -325,11 +373,12 @@ namespace NameParser.UI.ViewModels
             {
                 await System.Threading.Tasks.Task.Run(() =>
                 {
-                    var race = new Race(RaceNumber, RaceName, DistanceKm);
+                    var raceDistance = new RaceDistance(RaceNumber, RaceName, DistanceKm);
 
                     // Save race with nullable year for hors challenge
                     int? yearToSave = IsHorsChallenge ? null : (int?)Year;
-                    _raceRepository.SaveRace(race, yearToSave, SelectedFilePath, IsHorsChallenge);
+                    int? raceEventId = SelectedRaceEvent?.Id;
+                    _raceRepository.SaveRace(raceDistance, yearToSave, SelectedFilePath, IsHorsChallenge, raceEventId);
 
                     var memberRepository = new JsonMemberRepository("Members.json");
                     var challengerRepository = new JsonMemberRepository("Challenge.json");
@@ -356,8 +405,8 @@ namespace NameParser.UI.ViewModels
                         raceResultRepository,
                         pointsCalculationService);
 
-                    // Pass the race object with correct distance (from UI input) instead of parsing from filename
-                    var classification = raceProcessingService.ProcessRaceWithMembers(SelectedFilePath, race, allMembers);
+                    // Pass the race distance object with correct distance (from UI input) instead of parsing from filename
+                    var classification = raceProcessingService.ProcessRaceWithMembers(SelectedFilePath, raceDistance, allMembers);
 
                     // Get the saved race - for hors challenge, get all hors challenge races, otherwise get by year
                     List<RaceEntity> races;
@@ -440,8 +489,8 @@ namespace NameParser.UI.ViewModels
                         // Delete existing classifications for this race
                         _classificationRepository.DeleteClassificationsByRace(SelectedRace.Id);
 
-                        // Create race object from stored data
-                        var race = new Race(SelectedRace.RaceNumber, SelectedRace.Name, SelectedRace.DistanceKm);
+                        // Create race distance object from stored data
+                        var raceDistance = new RaceDistance(SelectedRace.RaceNumber, SelectedRace.Name, SelectedRace.DistanceKm);
 
                         // Get members
                         var memberRepository = new JsonMemberRepository("Members.json");
@@ -470,7 +519,7 @@ namespace NameParser.UI.ViewModels
                             pointsCalculationService);
 
                         // Process the race using temporary file path
-                        var classification = raceProcessingService.ProcessRaceWithMembers(tempFilePath, race, allMembers);
+                        var classification = raceProcessingService.ProcessRaceWithMembers(tempFilePath, raceDistance, allMembers);
 
                         // Save new classifications
                         _classificationRepository.SaveClassifications(SelectedRace.Id, classification);
@@ -1754,6 +1803,23 @@ namespace NameParser.UI.ViewModels
             }
         }
 
+        private void LoadRaceEventsForSelection()
+        {
+            try
+            {
+                var events = _raceEventRepository.GetAll();
+                RaceEventsForSelection.Clear();
+                foreach (var evt in events)
+                {
+                    RaceEventsForSelection.Add(evt);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error loading race events: {ex.Message}";
+            }
+        }
+
         private void ClearForm()
         {
             SelectedFilePath = string.Empty;
@@ -2302,6 +2368,212 @@ namespace NameParser.UI.ViewModels
             summary += $"\n👥 Total Challengers with points: {challengersWithPoints.Count}";
 
             return summary;
+        }
+
+        // Race Event-Based Upload Methods
+
+        private void LoadAvailableDistancesForUpload()
+        {
+            AvailableDistancesForUpload.Clear();
+
+            if (SelectedUploadRaceEvent != null)
+            {
+                var distances = _raceEventRepository.GetDistancesByEvent(SelectedUploadRaceEvent.Id);
+
+                // Calculate next race number
+                _nextRaceNumber = CalculateNextRaceNumber(SelectedUploadRaceEvent.EventDate.Year);
+
+                foreach (var distance in distances)
+                {
+                    AvailableDistancesForUpload.Add(new RaceDistanceUploadModel(distance));
+                }
+
+                StatusMessage = $"Loaded {distances.Count} distances for {SelectedUploadRaceEvent.Name}. Next race number: {_nextRaceNumber}";
+            }
+        }
+
+        private int CalculateNextRaceNumber(int year)
+        {
+            var existingRaces = _raceRepository.GetRacesByYear(year);
+            if (existingRaces == null || !existingRaces.Any())
+                return 1;
+
+            return existingRaces.Max(r => r.RaceNumber) + 1;
+        }
+
+        private void ExecuteBrowseDistanceFile(RaceDistanceUploadModel distanceUpload)
+        {
+            if (distanceUpload == null) return;
+
+            var openFileDialog = new OpenFileDialog
+            {
+                Filter = "Race Result Files (*.xlsx;*.pdf)|*.xlsx;*.pdf|Excel Files (*.xlsx)|*.xlsx|PDF Files (*.pdf)|*.pdf|All Files (*.*)|*.*",
+                Title = $"Select Result File for {distanceUpload.DistanceKm} km"
+            };
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                distanceUpload.FilePath = openFileDialog.FileName;
+                distanceUpload.StatusMessage = "Ready to process";
+                ((RelayCommand)ProcessAllDistancesCommand)?.RaiseCanExecuteChanged();
+
+                var extension = Path.GetExtension(openFileDialog.FileName).ToLowerInvariant();
+                var fileType = extension == ".pdf" ? "PDF" : "Excel";
+                StatusMessage = $"{fileType} file selected for {distanceUpload.DistanceKm} km";
+            }
+        }
+
+        private bool CanExecuteProcessAllDistances(object parameter)
+        {
+            return !IsProcessing && 
+                   SelectedUploadRaceEvent != null &&
+                   AvailableDistancesForUpload.Any(d => d.HasFile);
+        }
+
+        private async void ExecuteProcessAllDistances(object parameter)
+        {
+            if (SelectedUploadRaceEvent == null) return;
+
+            var distancesWithFiles = AvailableDistancesForUpload.Where(d => d.HasFile).ToList();
+            if (!distancesWithFiles.Any())
+            {
+                MessageBox.Show("Please select at least one file to process.", "No Files Selected", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var result = MessageBox.Show(
+                $"Process {distancesWithFiles.Count} distance(s) for {SelectedUploadRaceEvent.Name}?\n\n" +
+                $"Race Event: {SelectedUploadRaceEvent.Name}\n" +
+                $"Date: {SelectedUploadRaceEvent.EventDate:dd/MM/yyyy}\n" +
+                $"Year: {SelectedUploadRaceEvent.EventDate.Year}\n" +
+                $"Race Number: {_nextRaceNumber}\n" +
+                $"Distances: {string.Join(", ", distancesWithFiles.Select(d => $"{d.DistanceKm} km"))}\n",
+                "Confirm Processing",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes) return;
+
+            IsProcessing = true;
+            int successCount = 0;
+            int failCount = 0;
+            var errors = new List<string>();
+
+            try
+            {
+                foreach (var distanceUpload in distancesWithFiles)
+                {
+                    distanceUpload.StatusMessage = "Processing...";
+                    StatusMessage = $"Processing {distanceUpload.DistanceKm} km...";
+
+                    try
+                    {
+                        await System.Threading.Tasks.Task.Run(() =>
+                        {
+                            var raceDistance = new RaceDistance(_nextRaceNumber, SelectedUploadRaceEvent.Name, (int)distanceUpload.DistanceKm);
+
+                            // Save race
+                            int year = SelectedUploadRaceEvent.EventDate.Year;
+                            _raceRepository.SaveRace(raceDistance, year, distanceUpload.FilePath, false, SelectedUploadRaceEvent.Id);
+
+                            // Get members
+                            var memberRepository = new JsonMemberRepository("Members.json");
+                            var challengerRepository = new JsonMemberRepository("Challenge.json");
+                            var memberService = new MemberService(memberRepository, challengerRepository);
+                            var allMembers = memberService.GetAllMembersAndChallengers();
+
+                            // Select appropriate parser
+                            var extension = Path.GetExtension(distanceUpload.FilePath).ToLowerInvariant();
+                            IRaceResultRepository raceResultRepository;
+
+                            if (extension == ".pdf")
+                            {
+                                raceResultRepository = new PdfRaceResultRepository();
+                            }
+                            else
+                            {
+                                raceResultRepository = new ExcelRaceResultRepository();
+                            }
+
+                            var pointsCalculationService = new PointsCalculationService();
+                            var raceProcessingService = new RaceProcessingService(
+                                memberRepository,
+                                raceResultRepository,
+                                pointsCalculationService);
+
+                            // Process race
+                            var classification = raceProcessingService.ProcessRaceWithMembers(distanceUpload.FilePath, raceDistance, allMembers);
+
+                            // Save classifications
+                            var races = _raceRepository.GetRacesByYear(year);
+                            var savedRace = races.FirstOrDefault(r => r.Name == SelectedUploadRaceEvent.Name && 
+                                                                      r.RaceNumber == _nextRaceNumber && 
+                                                                      r.DistanceKm == (int)distanceUpload.DistanceKm);
+
+                            if (savedRace != null)
+                            {
+                                _classificationRepository.SaveClassifications(savedRace.Id, classification);
+                                _raceRepository.UpdateRaceStatus(savedRace.Id, "Processed");
+                            }
+                        });
+
+                        distanceUpload.StatusMessage = "✓ Processed";
+                        successCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        distanceUpload.StatusMessage = $"✗ Error: {ex.Message}";
+                        errors.Add($"{distanceUpload.DistanceKm} km: {ex.Message}");
+                        failCount++;
+                    }
+                }
+
+                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                {
+                    LoadRaces();
+
+                    if (failCount == 0)
+                    {
+                        StatusMessage = $"Successfully processed {successCount} distance(s)!";
+                        MessageBox.Show(
+                            $"All races processed successfully!\n\n" +
+                            $"Processed: {successCount} distance(s)\n" +
+                            $"Race Event: {SelectedUploadRaceEvent.Name}\n" +
+                            $"Race Number: {_nextRaceNumber}",
+                            "Success",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Information);
+
+                        // Clear the form
+                        SelectedUploadRaceEvent = null;
+                        AvailableDistancesForUpload.Clear();
+                    }
+                    else
+                    {
+                        StatusMessage = $"Processed {successCount} distance(s), {failCount} failed.";
+                        MessageBox.Show(
+                            $"Processing completed with errors:\n\n" +
+                            $"Successful: {successCount}\n" +
+                            $"Failed: {failCount}\n\n" +
+                            $"Errors:\n" + string.Join("\n", errors),
+                            "Partial Success",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                {
+                    StatusMessage = $"Error: {ex.Message}";
+                    MessageBox.Show($"Error processing races: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                });
+            }
+            finally
+            {
+                IsProcessing = false;
+            }
         }
     }
 

@@ -11,8 +11,5 @@
         <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
         <converters:RankToVisibilityConverter x:Key="RankToVisibilityConverter"/>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-
-        <!-- Localization Service -->
-        <services:LocalizationService x:Key="Localization"/>
     </Application.Resources>
 </Application>

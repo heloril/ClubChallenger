@@ -51,10 +51,10 @@ namespace NameParser.Application.Services
             return classification;
         }
 
-        public Classification ProcessRaceWithMembers(string raceFile, Race race, List<Member> members)
+        public Classification ProcessRaceWithMembers(string raceFile, RaceDistance raceDistance, List<Member> members)
         {
             var classification = new Classification();
-            ProcessSingleRaceWithRaceInfo(raceFile, race, members, classification);
+            ProcessSingleRaceWithRaceInfo(raceFile, raceDistance, members, classification);
             return classification;
         }
 
@@ -66,7 +66,7 @@ namespace NameParser.Application.Services
             int distanceKm,
             IRaceResultRepository repository)
         {
-            var race = new Race(raceNumber, raceName, distanceKm);
+            var raceDistance = new RaceDistance(raceNumber, raceName, distanceKm);
             var members = _memberRepository.GetMembersWithLastName();
             var classification = new Classification();
 
@@ -109,7 +109,7 @@ namespace NameParser.Application.Services
                     // Store complete race data
                     classification.AddOrUpdateResult(
                         member,
-                        race,
+                        raceDistance,
                         points,
                         finalRaceTime,
                         finalTimePerKm,
@@ -130,18 +130,18 @@ namespace NameParser.Application.Services
         private void ProcessSingleRace(string raceFile, List<Member> members, Classification classification)
         {
             var raceFileName = new RaceFileName(raceFile);
-            var race = new Race(raceFileName.RaceNumber, raceFileName.RaceName, raceFileName.DistanceKm);
+            var raceDistance = new RaceDistance(raceFileName.RaceNumber, raceFileName.RaceName, raceFileName.DistanceKm);
 
-            ProcessRaceResults(raceFile, race, members, classification);
+            ProcessRaceResults(raceFile, raceDistance, members, classification);
         }
 
-        private void ProcessSingleRaceWithRaceInfo(string raceFile, Race race, List<Member> members, Classification classification)
+        private void ProcessSingleRaceWithRaceInfo(string raceFile, RaceDistance raceDistance, List<Member> members, Classification classification)
         {
-            // Use the provided race object which has the correct distance from the database/UI
-            ProcessRaceResults(raceFile, race, members, classification);
+            // Use the provided race distance object which has the correct distance from the database/UI
+            ProcessRaceResults(raceFile, raceDistance, members, classification);
         }
 
-        private void ProcessRaceResults(string raceFile, Race race, List<Member> members, Classification classification)
+        private void ProcessRaceResults(string raceFile, RaceDistance raceDistance, List<Member> members, Classification classification)
         {
             var results = _raceResultRepository.GetRaceResults(raceFile, members);
 
@@ -181,7 +181,7 @@ namespace NameParser.Application.Services
                     // Store complete race data
                     classification.AddOrUpdateResult(
                         member,
-                        race,
+                        raceDistance,
                         points,
                         finalRaceTime,
                         finalTimePerKm,

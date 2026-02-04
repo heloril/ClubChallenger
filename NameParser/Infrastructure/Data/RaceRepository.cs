@@ -15,21 +15,21 @@ namespace NameParser.Infrastructure.Data
             _fileStorageService = new FileStorageService();
         }
 
-        public void SaveRace(Race race, int? year, string filePath, bool isHorsChallenge = false)
+        public void SaveRace(RaceDistance raceDistance, int? year, string filePath, bool isHorsChallenge = false, int? raceEventId = null)
         {
             using (var context = new RaceManagementContext())
             {
                 // Check if a race with the same year, race number, and distance already exists
                 var existingRace = context.Races
                     .FirstOrDefault(r => r.Year == year 
-                                      && r.RaceNumber == race.RaceNumber 
-                                      && r.DistanceKm == race.DistanceKm);
+                                      && r.RaceNumber == raceDistance.RaceNumber 
+                                      && r.DistanceKm == raceDistance.DistanceKm);
 
                 if (existingRace != null)
                 {
                     throw new System.InvalidOperationException(
-                        $"A race with Year={year?.ToString() ?? "Hors Challenge"}, RaceNumber={race.RaceNumber}, " +
-                        $"and Distance={race.DistanceKm}km already exists (ID: {existingRace.Id}). " +
+                        $"A race with Year={year?.ToString() ?? "Hors Challenge"}, RaceNumber={raceDistance.RaceNumber}, " +
+                        $"and Distance={raceDistance.DistanceKm}km already exists (ID: {existingRace.Id}). " +
                         $"Please use a different race number, distance, or delete the existing race first.");
                 }
 
@@ -38,10 +38,11 @@ namespace NameParser.Infrastructure.Data
 
                 var entity = new RaceEntity
                 {
-                    Name = race.Name,
+                    Name = raceDistance.Name,
                     Year = year,
-                    RaceNumber = race.RaceNumber,
-                    DistanceKm = race.DistanceKm,
+                    RaceNumber = raceDistance.RaceNumber,
+                    DistanceKm = raceDistance.DistanceKm,
+                    RaceEventId = raceEventId,
                     FileContent = fileData.content,
                     FileName = fileData.fileName,
                     FileExtension = fileData.extension,
@@ -122,6 +123,32 @@ namespace NameParser.Infrastructure.Data
                 {
                     // File content is stored in database and will be deleted with the race entity
                     context.Races.Remove(race);
+                    context.SaveChanges();
+                }
+            }
+        }
+
+        public void AssociateRaceWithEvent(int raceId, int raceEventId)
+        {
+            using (var context = new RaceManagementContext())
+            {
+                var race = context.Races.Find(raceId);
+                if (race != null)
+                {
+                    race.RaceEventId = raceEventId;
+                    context.SaveChanges();
+                }
+            }
+        }
+
+        public void DisassociateRaceFromEvent(int raceId)
+        {
+            using (var context = new RaceManagementContext())
+            {
+                var race = context.Races.Find(raceId);
+                if (race != null)
+                {
+                    race.RaceEventId = null;
                     context.SaveChanges();
                 }
             }

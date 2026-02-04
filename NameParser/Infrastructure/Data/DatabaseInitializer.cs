@@ -204,6 +204,133 @@ namespace NameParser.Infrastructure.Data
                             PRINT 'New index IX_Races_Year_RaceNumber_DistanceKm created';
                         END";
                     command.ExecuteNonQuery();
+
+                    // Add RaceEventId column to Races table
+                    command.CommandText = @"
+                        IF NOT EXISTS (
+                            SELECT * FROM sys.columns 
+                            WHERE object_id = OBJECT_ID(N'[dbo].[Races]') 
+                            AND name = 'RaceEventId'
+                        )
+                        BEGIN
+                            ALTER TABLE [dbo].[Races] ADD [RaceEventId] INT NULL;
+                            PRINT 'RaceEventId column added to Races table';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Create RaceEvents table if it doesn't exist
+                    command.CommandText = @"
+                        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[RaceEvents]') AND type in (N'U'))
+                        BEGIN
+                            CREATE TABLE [dbo].[RaceEvents] (
+                                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                [Name] NVARCHAR(200) NOT NULL,
+                                [EventDate] DATETIME2(7) NOT NULL,
+                                [Location] NVARCHAR(200) NULL,
+                                [WebsiteUrl] NVARCHAR(500) NULL,
+                                [Description] NVARCHAR(2000) NULL,
+                                [CreatedDate] DATETIME2(7) NOT NULL,
+                                [ModifiedDate] DATETIME2(7) NULL
+                            );
+                            PRINT 'RaceEvents table created';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Create Challenges table if it doesn't exist
+                    command.CommandText = @"
+                        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Challenges]') AND type in (N'U'))
+                        BEGIN
+                            CREATE TABLE [dbo].[Challenges] (
+                                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                [Name] NVARCHAR(200) NOT NULL,
+                                [Description] NVARCHAR(1000) NULL,
+                                [Year] INT NOT NULL,
+                                [StartDate] DATETIME2(7) NULL,
+                                [EndDate] DATETIME2(7) NULL,
+                                [CreatedDate] DATETIME2(7) NOT NULL,
+                                [ModifiedDate] DATETIME2(7) NULL
+                            );
+                            PRINT 'Challenges table created';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Create ChallengeRaceEvents table if it doesn't exist
+                    command.CommandText = @"
+                        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[ChallengeRaceEvents]') AND type in (N'U'))
+                        BEGIN
+                            CREATE TABLE [dbo].[ChallengeRaceEvents] (
+                                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                [ChallengeId] INT NOT NULL,
+                                [RaceEventId] INT NOT NULL,
+                                [DisplayOrder] INT NOT NULL,
+                                CONSTRAINT [FK_ChallengeRaceEvents_Challenges_ChallengeId] 
+                                    FOREIGN KEY ([ChallengeId]) REFERENCES [dbo].[Challenges] ([Id]) ON DELETE CASCADE,
+                                CONSTRAINT [FK_ChallengeRaceEvents_RaceEvents_RaceEventId] 
+                                    FOREIGN KEY ([RaceEventId]) REFERENCES [dbo].[RaceEvents] ([Id]) ON DELETE CASCADE
+                            );
+                            PRINT 'ChallengeRaceEvents table created';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Create unique index on ChallengeRaceEvents if it doesn't exist
+                    command.CommandText = @"
+                        IF NOT EXISTS (
+                            SELECT * FROM sys.indexes 
+                            WHERE name = 'IX_ChallengeRaceEvents_ChallengeId_RaceEventId' 
+                            AND object_id = OBJECT_ID(N'[dbo].[ChallengeRaceEvents]')
+                        )
+                        BEGIN
+                            CREATE UNIQUE NONCLUSTERED INDEX [IX_ChallengeRaceEvents_ChallengeId_RaceEventId]
+                            ON [dbo].[ChallengeRaceEvents] ([ChallengeId] ASC, [RaceEventId] ASC);
+                            PRINT 'Unique index on ChallengeRaceEvents created';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Add foreign key from Races to RaceEvents if it doesn't exist
+                    command.CommandText = @"
+                        IF NOT EXISTS (
+                            SELECT * FROM sys.foreign_keys 
+                            WHERE name = 'FK_Races_RaceEvents_RaceEventId' 
+                            AND parent_object_id = OBJECT_ID(N'[dbo].[Races]')
+                        )
+                        AND EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[Races]') AND name = 'RaceEventId')
+                        AND EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[RaceEvents]') AND type in (N'U'))
+                        BEGIN
+                            ALTER TABLE [dbo].[Races]
+                            ADD CONSTRAINT [FK_Races_RaceEvents_RaceEventId] 
+                                FOREIGN KEY ([RaceEventId]) REFERENCES [dbo].[RaceEvents] ([Id]) ON DELETE SET NULL;
+                            PRINT 'Foreign key from Races to RaceEvents created';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Create RaceEventDistances table if it doesn't exist
+                    command.CommandText = @"
+                        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[RaceEventDistances]') AND type in (N'U'))
+                        BEGIN
+                            CREATE TABLE [dbo].[RaceEventDistances] (
+                                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                [RaceEventId] INT NOT NULL,
+                                [DistanceKm] DECIMAL(10,3) NOT NULL,
+                                CONSTRAINT [FK_RaceEventDistances_RaceEvents_RaceEventId] 
+                                    FOREIGN KEY ([RaceEventId]) REFERENCES [dbo].[RaceEvents] ([Id]) ON DELETE CASCADE
+                            );
+                            PRINT 'RaceEventDistances table created';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Create unique index on RaceEventDistances if it doesn't exist
+                    command.CommandText = @"
+                        IF NOT EXISTS (
+                            SELECT * FROM sys.indexes 
+                            WHERE name = 'IX_RaceEventDistances_RaceEventId_DistanceKm' 
+                            AND object_id = OBJECT_ID(N'[dbo].[RaceEventDistances]')
+                        )
+                        BEGIN
+                            CREATE UNIQUE NONCLUSTERED INDEX [IX_RaceEventDistances_RaceEventId_DistanceKm]
+                            ON [dbo].[RaceEventDistances] ([RaceEventId] ASC, [DistanceKm] ASC);
+                            PRINT 'Unique index on RaceEventDistances created';
+                        END";
+                    command.ExecuteNonQuery();
                 }
 
                 connection.Close();

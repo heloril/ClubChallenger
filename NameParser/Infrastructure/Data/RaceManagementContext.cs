@@ -18,6 +18,10 @@ namespace NameParser.Infrastructure.Data
 
         public DbSet<RaceEntity> Races { get; set; }
         public DbSet<ClassificationEntity> Classifications { get; set; }
+        public DbSet<ChallengeEntity> Challenges { get; set; }
+        public DbSet<RaceEventEntity> RaceEvents { get; set; }
+        public DbSet<ChallengeRaceEventEntity> ChallengeRaceEvents { get; set; }
+        public DbSet<RaceEventDistanceEntity> RaceEventDistances { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -48,6 +52,31 @@ namespace NameParser.Infrastructure.Data
                 .WithMany()
                 .HasForeignKey(c => c.RaceId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Challenge-RaceEvent many-to-many relationship
+            modelBuilder.Entity<ChallengeRaceEventEntity>()
+                .HasOne(cre => cre.Challenge)
+                .WithMany()
+                .HasForeignKey(cre => cre.ChallengeId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ChallengeRaceEventEntity>()
+                .HasOne(cre => cre.RaceEvent)
+                .WithMany()
+                .HasForeignKey(cre => cre.RaceEventId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Unique constraint: A race event can only be added once to a challenge
+            modelBuilder.Entity<ChallengeRaceEventEntity>()
+                .HasIndex(cre => new { cre.ChallengeId, cre.RaceEventId })
+                .IsUnique();
+
+            // Race-RaceEvent relationship
+            modelBuilder.Entity<RaceEntity>()
+                .HasOne(r => r.RaceEvent)
+                .WithMany()
+                .HasForeignKey(r => r.RaceEventId)
+                .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }

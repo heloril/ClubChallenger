@@ -14,34 +14,34 @@ namespace NameParser.Domain.Aggregates
             _classifications = new Dictionary<string, MemberClassification>();
         }
 
-        public void AddOrUpdateResult(Member member, Race race, int points)
+        public void AddOrUpdateResult(Member member, RaceDistance raceDistance, int points)
         {
-            AddOrUpdateResult(member, race, points, null, null, null, null, null, true);
+            AddOrUpdateResult(member, raceDistance, points, null, null, null, null, null, true);
         }
 
-        public void AddOrUpdateResult(Member member, Race race, int points, TimeSpan? raceTime, TimeSpan? timePerKm)
+        public void AddOrUpdateResult(Member member, RaceDistance raceDistance, int points, TimeSpan? raceTime, TimeSpan? timePerKm)
         {
-            AddOrUpdateResult(member, race, points, raceTime, timePerKm, null, null, null, true);
+            AddOrUpdateResult(member, raceDistance, points, raceTime, timePerKm, null, null, null, true);
         }
 
-        public void AddOrUpdateResult(Member member, Race race, int points, TimeSpan? raceTime, TimeSpan? timePerKm, int? position)
+        public void AddOrUpdateResult(Member member, RaceDistance raceDistance, int points, TimeSpan? raceTime, TimeSpan? timePerKm, int? position)
         {
-            AddOrUpdateResult(member, race, points, raceTime, timePerKm, position, null, null, true);
+            AddOrUpdateResult(member, raceDistance, points, raceTime, timePerKm, position, null, null, true);
         }
 
-        public void AddOrUpdateResult(Member member, Race race, int points, TimeSpan? raceTime, TimeSpan? timePerKm, int? position, string team, double? speed, bool isMember)
+        public void AddOrUpdateResult(Member member, RaceDistance raceDistance, int points, TimeSpan? raceTime, TimeSpan? timePerKm, int? position, string team, double? speed, bool isMember)
         {
-            AddOrUpdateResult(member, race, points, raceTime, timePerKm, position, team, speed, isMember, null, null, null, null);
+            AddOrUpdateResult(member, raceDistance, points, raceTime, timePerKm, position, team, speed, isMember, null, null, null, null);
         }
 
-        public void AddOrUpdateResult(Member member, Race race, int points, TimeSpan? raceTime, TimeSpan? timePerKm, int? position, string team, double? speed, bool isMember, string sex, int? positionBySex, string ageCategory, int? positionByCategory)
+        public void AddOrUpdateResult(Member member, RaceDistance raceDistance, int points, TimeSpan? raceTime, TimeSpan? timePerKm, int? position, string team, double? speed, bool isMember, string sex, int? positionBySex, string ageCategory, int? positionByCategory)
         {
-            var key = GetKey(member, race);
+            var key = GetKey(member, raceDistance);
 
             if (_classifications.TryGetValue(key, out var existing))
             {
                 existing.UpdatePoints(points);
-                existing.AddBonus(race.DistanceKm);
+                existing.AddBonus(raceDistance.DistanceKm);
                 existing.UpdateTimes(raceTime, timePerKm);
                 existing.UpdatePosition(position);
                 existing.UpdateTeamAndSpeed(team, speed);
@@ -49,7 +49,7 @@ namespace NameParser.Domain.Aggregates
             }
             else
             {
-                _classifications[key] = new MemberClassification(member, race, points, race.DistanceKm, raceTime, timePerKm, position, team, speed, isMember, sex, positionBySex, ageCategory, positionByCategory);
+                _classifications[key] = new MemberClassification(member, raceDistance, points, raceDistance.DistanceKm, raceTime, timePerKm, position, team, speed, isMember, sex, positionBySex, ageCategory, positionByCategory);
             }
         }
 
@@ -58,9 +58,9 @@ namespace NameParser.Domain.Aggregates
             return _classifications.Values.OrderBy(c => c.Member.LastName).ThenBy(c => c.Member.FirstName);
         }
 
-        public MemberClassification GetClassification(Member member, Race race)
+        public MemberClassification GetClassification(Member member, RaceDistance raceDistance)
         {
-            var key = GetKey(member, race);
+            var key = GetKey(member, raceDistance);
             return _classifications.TryGetValue(key, out var classification) ? classification : null;
         }
 
@@ -69,9 +69,9 @@ namespace NameParser.Domain.Aggregates
             return _classifications.Values.Select(c => c.RaceName).Distinct();
         }
 
-        private string GetKey(Member member, Race race)
+        private string GetKey(Member member, RaceDistance raceDistance)
         {
-            return $"{member.GetFullName()}_{race.Name}";
+            return $"{member.GetFullName()}_{raceDistance.Name}";
         }
     }
 
@@ -93,10 +93,10 @@ namespace NameParser.Domain.Aggregates
         public bool IsMember { get; private set; }
         public bool IsChallenger { get; private set; }
 
-        public MemberClassification(Member member, Race race, int points, int bonusKm, TimeSpan? raceTime = null, TimeSpan? timePerKm = null, int? position = null, string team = null, double? speed = null, bool isMember = true, string sex = null, int? positionBySex = null, string ageCategory = null, int? positionByCategory = null)
+        public MemberClassification(Member member, RaceDistance raceDistance, int points, int bonusKm, TimeSpan? raceTime = null, TimeSpan? timePerKm = null, int? position = null, string team = null, double? speed = null, bool isMember = true, string sex = null, int? positionBySex = null, string ageCategory = null, int? positionByCategory = null)
         {
             Member = member ?? throw new ArgumentNullException(nameof(member));
-            RaceName = race?.Name ?? throw new ArgumentNullException(nameof(race));
+            RaceName = raceDistance?.Name ?? throw new ArgumentNullException(nameof(raceDistance));
             Points = points;
             BonusKm = bonusKm;
             RaceTime = raceTime;

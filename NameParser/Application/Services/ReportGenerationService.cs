@@ -27,8 +27,8 @@ namespace NameParser.Application.Services
 
                 foreach (var raceName in distinctRaceNames)
                 {
-                    var race = new Domain.Entities.Race(0, raceName, 0);
-                    var memberClassification = classification.GetClassification(member, race);
+                    var raceDistance = new Domain.Entities.RaceDistance(0, raceName, 0);
+                    var memberClassification = classification.GetClassification(member, raceDistance);
 
                     if (memberClassification != null)
                     {

@@ -25,6 +25,14 @@ namespace NameParser.Infrastructure.Data.Models
         [Required]
         public int DistanceKm { get; set; }
 
+        /// <summary>
+        /// Foreign key to RaceEvent (optional for backward compatibility)
+        /// </summary>
+        public int? RaceEventId { get; set; }
+
+        [ForeignKey(nameof(RaceEventId))]
+        public virtual RaceEventEntity RaceEvent { get; set; }
+
         [MaxLength(500)]
         [Obsolete("Use FileContent instead. Kept for backward compatibility.")]
         public string FilePath { get; set; }
