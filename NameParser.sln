@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NameParser.ConfigChecker", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NameParser.EmailTester", "NameParser.EmailTester\NameParser.EmailTester.csproj", "{099A1B53-4676-42FA-BAE2-4916E86F67FD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NameParser.Tests", "NameParser.Tests\NameParser.Tests.csproj", "{68E2F74A-2EB8-4B1A-81ED-9D406248213E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -83,6 +85,18 @@ Global
 		{099A1B53-4676-42FA-BAE2-4916E86F67FD}.Release|x64.Build.0 = Release|Any CPU
 		{099A1B53-4676-42FA-BAE2-4916E86F67FD}.Release|x86.ActiveCfg = Release|Any CPU
 		{099A1B53-4676-42FA-BAE2-4916E86F67FD}.Release|x86.Build.0 = Release|Any CPU
+		{68E2F74A-2EB8-4B1A-81ED-9D406248213E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{68E2F74A-2EB8-4B1A-81ED-9D406248213E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{68E2F74A-2EB8-4B1A-81ED-9D406248213E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{68E2F74A-2EB8-4B1A-81ED-9D406248213E}.Debug|x64.Build.0 = Debug|Any CPU
+		{68E2F74A-2EB8-4B1A-81ED-9D406248213E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{68E2F74A-2EB8-4B1A-81ED-9D406248213E}.Debug|x86.Build.0 = Debug|Any CPU
+		{68E2F74A-2EB8-4B1A-81ED-9D406248213E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{68E2F74A-2EB8-4B1A-81ED-9D406248213E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{68E2F74A-2EB8-4B1A-81ED-9D406248213E}.Release|x64.ActiveCfg = Release|Any CPU
+		{68E2F74A-2EB8-4B1A-81ED-9D406248213E}.Release|x64.Build.0 = Release|Any CPU
+		{68E2F74A-2EB8-4B1A-81ED-9D406248213E}.Release|x86.ActiveCfg = Release|Any CPU
+		{68E2F74A-2EB8-4B1A-81ED-9D406248213E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
