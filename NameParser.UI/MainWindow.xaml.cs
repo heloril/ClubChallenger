@@ -23,37 +23,48 @@ namespace NameParser.UI
 
             // Initialize WebView2 for WYSIWYG editor
             InitializeEmailEditor();
-
-            // Wire up for email preview updates
-            if (DataContext is MainViewModel viewModel)
-            {
-                Loaded += (s, e) =>
-                {
-                    // Listen for changes in EmailBody (when template is generated)
-                    viewModel.ChallengeMailingViewModel.PropertyChanged += (sender, args) =>
-                    {
-                        if (args.PropertyName == nameof(viewModel.ChallengeMailingViewModel.EmailBody))
-                        {
-                            // Auto-load template into editor when generated
-                            if (_isEditorReady)
-                            {
-                                LoadTemplateIntoEditor();
-                            }
-                        }
-                    };
-                };
-            }
         }
 
-        private async void InitializeEmailEditor()
+        // No longer need TabControl_SelectionChanged since we have one unified tab
+        // No longer need MoveWebViewToContainer since WebView2 stays in one place
+
+        private T FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
         {
-            try
+            for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
             {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+                if (child is T typedChild)
+                    return typedChild;
+
+                var result = FindVisualChild<T>(child);
+                if (result != null)
+                            return result;
+                        }
+                        return null;
+                    }
+
+                    private async void InitializeEmailEditor()
+                    {
+                        try
+                        {
+                            var viewModel = DataContext as MainViewModel;
+                            if (viewModel != null)
+                                viewModel.StatusMessage = "Initializing email editor...";
+
                 _emailEditorWebView = new WebView2();
+
+                // Set minimum size for WebView2
+                _emailEditorWebView.MinHeight = 400;
+                _emailEditorWebView.MinWidth = 600;
+
+                // Add to WebView container (unified for both mailing types)
                 WebViewContainer.Children.Add(_emailEditorWebView);
 
                 // Initialize WebView2
                 await _emailEditorWebView.EnsureCoreWebView2Async(null);
+
+                if (viewModel != null)
+                    viewModel.StatusMessage = "WebView2 initialized, setting up message handlers...";
 
                 // Handle messages from JavaScript
                 _emailEditorWebView.CoreWebView2.WebMessageReceived += (sender, args) =>
@@ -69,11 +80,12 @@ namespace NameParser.UI
                     }
                     else if (messageType == "contentChanged")
                     {
-                        // Update ViewModel with new HTML
+                        // Update ViewModel with new HTML (both ViewModels for now, only active tab matters)
                         var html = message.RootElement.GetProperty("html").GetString();
                         if (DataContext is MainViewModel viewModel)
                         {
                             viewModel.ChallengeMailingViewModel.EmailBody = html;
+                            viewModel.MemberMailingViewModel.EmailBody = html;
                         }
                     }
                 };
@@ -83,18 +95,28 @@ namespace NameParser.UI
 
                 if (File.Exists(htmlPath))
                 {
+                    if (viewModel != null)
+                        viewModel.StatusMessage = $"Loading CKEditor from {htmlPath}...";
                     _emailEditorWebView.CoreWebView2.Navigate(new Uri(htmlPath).AbsoluteUri);
                 }
                 else
                 {
+                    if (viewModel != null)
+                        viewModel.StatusMessage = "CKEditor.html not found, loading from embedded HTML...";
                     // Fallback: Load from embedded HTML string
                     var editorHtml = GetCKEditorHtml();
                     _emailEditorWebView.NavigateToString(editorHtml);
                 }
+
+                if (viewModel != null)
+                    viewModel.StatusMessage = "Email editor loaded successfully!";
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error initializing email editor: {ex.Message}\n\nPlease install Microsoft Edge WebView2 Runtime.", 
+                var viewModel = DataContext as MainViewModel;
+                if (viewModel != null)
+                    viewModel.StatusMessage = $"Error initializing email editor: {ex.Message}";
+                MessageBox.Show($"Error initializing email editor: {ex.Message}\n\nStack trace:\n{ex.StackTrace}\n\nPlease install Microsoft Edge WebView2 Runtime.", 
                     "Editor Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -104,7 +126,30 @@ namespace NameParser.UI
             if (!_isEditorReady || _emailEditorWebView == null) return;
 
             var viewModel = DataContext as MainViewModel;
-            var html = viewModel?.ChallengeMailingViewModel?.EmailBody;
+
+            // Get HTML from the appropriate ViewModel based on selected mailing type
+            string html = null;
+            if (viewModel != null)
+            {
+                if (viewModel.IsMemberMailingSelected)
+                {
+                    html = viewModel.MemberMailingViewModel?.EmailBody;
+                }
+                else if (viewModel.IsChallengeMailingSelected)
+                {
+                    html = viewModel.ChallengeMailingViewModel?.EmailBody;
+                }
+
+                // Fallback: try the other one if the selected one is empty
+                if (string.IsNullOrWhiteSpace(html))
+                {
+                    html = viewModel.ChallengeMailingViewModel?.EmailBody;
+                    if (string.IsNullOrWhiteSpace(html))
+                    {
+                        html = viewModel.MemberMailingViewModel?.EmailBody;
+                    }
+                }
+            }
 
             if (!string.IsNullOrWhiteSpace(html))
             {
@@ -125,7 +170,9 @@ namespace NameParser.UI
 
                 if (DataContext is MainViewModel viewModel)
                 {
+                    // Update both ViewModels (they share the same editor)
                     viewModel.ChallengeMailingViewModel.EmailBody = html;
+                    viewModel.MemberMailingViewModel.EmailBody = html;
                 }
 
                 MessageBox.Show("HTML retrieved from editor and saved!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);

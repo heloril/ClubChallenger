@@ -53,6 +53,7 @@ namespace NameParser.UI.ViewModels
         private RaceEventEntity _selectedUploadRaceEvent;
         private RaceDistanceUploadModel _selectedDistanceUpload;
         private int _nextRaceNumber = 1;
+        private string _selectedMailingType = "Member"; // "Member" or "Challenge"
 
         public MainViewModel()
         {
@@ -76,8 +77,8 @@ namespace NameParser.UI.ViewModels
             DistanceKm = 10;
             RaceNumber = 1;
 
-            // Initialize language
-            _selectedLanguage = "en";
+            // Initialize language to French by default
+            _selectedLanguage = "fr";
             AvailableLanguages = new ObservableCollection<LanguageOption>
             {
                 new LanguageOption { Code = "en", DisplayName = "English" },
@@ -143,6 +144,7 @@ namespace NameParser.UI.ViewModels
             RaceEventManagementViewModel = new RaceEventManagementViewModel();
             ChallengeCalendarViewModel = new ChallengeCalendarViewModel();
             ChallengeMailingViewModel = new ChallengeMailingViewModel();
+            MemberMailingViewModel = new MemberMailingViewModel();
 
             LoadRaces();
             LoadRaceEventsForSelection();
@@ -373,6 +375,7 @@ namespace NameParser.UI.ViewModels
         public RaceEventManagementViewModel RaceEventManagementViewModel { get; }
         public ChallengeCalendarViewModel ChallengeCalendarViewModel { get; }
         public ChallengeMailingViewModel ChallengeMailingViewModel { get; }
+        public MemberMailingViewModel MemberMailingViewModel { get; }
 
         // Localization
         public LocalizationService Localization => LocalizationService.Instance;
@@ -388,6 +391,38 @@ namespace NameParser.UI.ViewModels
                 {
                     LocalizationService.Instance.SetLanguage(value);
                 }
+            }
+        }
+
+        // Mailing Type Selection
+        public string SelectedMailingType
+        {
+            get => _selectedMailingType;
+            set
+            {
+                if (SetProperty(ref _selectedMailingType, value))
+                {
+                    OnPropertyChanged(nameof(IsMemberMailingSelected));
+                    OnPropertyChanged(nameof(IsChallengeMailingSelected));
+                    UpdateMailingRecipientCount();
+                }
+            }
+        }
+
+        public bool IsMemberMailingSelected => SelectedMailingType == "Member";
+        public bool IsChallengeMailingSelected => SelectedMailingType == "Challenge";
+
+        private void UpdateMailingRecipientCount()
+        {
+            if (IsMemberMailingSelected)
+            {
+                // Update member count from Members.json
+                StatusMessage = $"Ready to send to members (count will be calculated before sending)";
+            }
+            else
+            {
+                // Update challenger count from selected challenge
+                StatusMessage = $"Ready to send to challengers (count will be calculated before sending)";
             }
         }
 

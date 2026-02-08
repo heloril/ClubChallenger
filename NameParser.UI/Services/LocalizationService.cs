@@ -19,7 +19,10 @@ namespace NameParser.UI.Services
         private LocalizationService()
         {
             _resourceManager = new ResourceManager("NameParser.UI.Resources.Strings", typeof(LocalizationService).Assembly);
-            _currentCulture = Thread.CurrentThread.CurrentUICulture;
+            // Initialize to French by default
+            _currentCulture = new CultureInfo("fr-FR");
+            Thread.CurrentThread.CurrentUICulture = _currentCulture;
+            Thread.CurrentThread.CurrentCulture = _currentCulture;
         }
 
         public CultureInfo CurrentCulture

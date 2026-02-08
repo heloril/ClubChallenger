@@ -13,6 +13,8 @@
     </Window.DataContext>
 
     <Window.Resources>
+        <converters:StringToBoolConverter x:Key="StringToBoolConverter"/>
+
         <Style TargetType="TextBlock">
             <Setter Property="Margin" Value="5"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -961,62 +963,106 @@
                 </Grid>
             </TabItem>
 
-            <!-- Challenge Mailing Tab -->
-            <TabItem Header="{Binding Localization[TabChallengeMailing]}">
+            <!-- Unified Mailing Tab -->
+            <TabItem Header="📧 Mailing">
                 <Grid Margin="20">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Challenge Selection -->
-                    <GroupBox Grid.Row="0" Header="{Binding Localization[ChallengeSelection]}" Margin="0,0,0,10">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding Localization[SelectChallenge]}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                            <ComboBox ItemsSource="{Binding ChallengeMailingViewModel.Challenges}"
-                                     SelectedItem="{Binding ChallengeMailingViewModel.SelectedChallenge}"
-                                     Width="300" Margin="0,0,10,0">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" Margin="0,0,10,0"/>
-                                            <TextBlock Text="-" Margin="0,0,5,0"/>
-                                            <TextBlock Text="{Binding Year}"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
-                            <Button Content="{Binding Localization[Refresh]}" Command="{Binding ChallengeMailingViewModel.LoadChallengesCommand}" Width="100"/>
+                    <!-- Mailing Type Selection -->
+                    <GroupBox Grid.Row="0" Header="Type de Mailing / Mailing Type" Margin="0,0,0,10">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="5">
+                                <RadioButton Content="📤 Member Mailing (Newsletter)" 
+                                           IsChecked="{Binding SelectedMailingType, Converter={StaticResource StringToBoolConverter}, ConverterParameter=Member}"
+                                           FontWeight="Bold" FontSize="14" Margin="0,0,30,0"/>
+                                <RadioButton Content="🏆 Challenge Mailing (Classement)" 
+                                           IsChecked="{Binding SelectedMailingType, Converter={StaticResource StringToBoolConverter}, ConverterParameter=Challenge}"
+                                           FontWeight="Bold" FontSize="14"/>
+                            </StackPanel>
+                            <TextBlock Text="Select the type of mailing to send" FontStyle="Italic" Foreground="#666" Margin="5,5,5,0"/>
                         </StackPanel>
                     </GroupBox>
 
-                    <!-- Email Editor -->
-                    <GroupBox Grid.Row="1" Header="{Binding Localization[EmailContent]}" Margin="0,0,0,10">
+                    <!-- Mailing-Specific Configuration -->
+                    <GroupBox Grid.Row="1" Header="Configuration" Margin="0,0,0,10">
+                        <Grid>
+                            <!-- Member Mailing Configuration -->
+                            <StackPanel Visibility="{Binding IsMemberMailingSelected, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <!-- Mailing Date -->
+                                <StackPanel Orientation="Horizontal" Margin="5">
+                                    <TextBlock Text="Mailing Date:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0" Width="120"/>
+                                    <DatePicker SelectedDate="{Binding MemberMailingViewModel.MailingDate}" Width="200"/>
+                                    <TextBlock Text="(Détermine les résultats et calendrier de la semaine)" 
+                                              FontStyle="Italic" Foreground="#666" VerticalAlignment="Center" Margin="15,0,0,0"/>
+                                </StackPanel>
+
+                                <!-- Generate Template Button -->
+                                <Button Content="📧 Generate Email Template" 
+                                       Command="{Binding MemberMailingViewModel.GenerateTemplateCommand}"
+                                       Background="#4CAF50" Foreground="White" FontWeight="Bold"
+                                       Height="40" Margin="5,10,5,5" HorizontalAlignment="Stretch"
+                                       ToolTip="Generate email with: Training schedule + Previous week results + Current week calendar"/>
+                            </StackPanel>
+
+                            <!-- Challenge Mailing Configuration -->
+                            <StackPanel Visibility="{Binding IsChallengeMailingSelected, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <StackPanel Orientation="Horizontal" Margin="5">
+                                    <TextBlock Text="Select Challenge:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <ComboBox ItemsSource="{Binding ChallengeMailingViewModel.Challenges}"
+                                             SelectedItem="{Binding ChallengeMailingViewModel.SelectedChallenge}"
+                                             Width="300" Margin="0,0,10,0">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" Margin="0,0,10,0"/>
+                                                    <TextBlock Text="-" Margin="0,0,5,0"/>
+                                                    <TextBlock Text="{Binding Year}"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <Button Content="🔄 Refresh" Command="{Binding ChallengeMailingViewModel.LoadChallengesCommand}" Width="100"/>
+                                </StackPanel>
+
+                                <!-- Generate Template Button -->
+                                <Button Content="📧 Generate Email Template" 
+                                       Command="{Binding ChallengeMailingViewModel.GenerateTemplateCommand}"
+                                       Background="#FF9800" Foreground="White" FontWeight="Bold"
+                                       Height="40" Margin="5,10,5,5" HorizontalAlignment="Stretch"
+                                       ToolTip="Generate email with challenge standings"/>
+                            </StackPanel>
+                        </Grid>
+                    </GroupBox>
+
+                    <!-- Email Editor (Common for both) -->
+                    <GroupBox Grid.Row="2" Header="Email Content" Margin="0,0,0,10">
                         <Grid>
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Generate Template Button -->
-                            <Button Grid.Row="0" Content="{Binding Localization[GenerateEmailTemplate]}" 
-                                   Command="{Binding ChallengeMailingViewModel.GenerateTemplateCommand}"
-                                   Background="#FF9800" Foreground="White" FontWeight="Bold"
-                                   Height="40" Margin="5" HorizontalAlignment="Stretch"
-                                   ToolTip="{Binding Localization[GenerateEmailTemplateTooltip]}"/>
-
                             <!-- Subject -->
-                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="5">
-                                <TextBlock Text="{Binding Localization[Subject]}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5">
+                                <TextBlock Text="Subject:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,10,0" Width="80"/>
+                                <!-- Member Subject -->
+                                <TextBox Text="{Binding MemberMailingViewModel.EmailSubject, UpdateSourceTrigger=PropertyChanged}" 
+                                        Width="600" Height="30"
+                                        Visibility="{Binding IsMemberMailingSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <!-- Challenge Subject -->
                                 <TextBox Text="{Binding ChallengeMailingViewModel.EmailSubject, UpdateSourceTrigger=PropertyChanged}" 
-                                        Width="600" Height="30"/>
+                                        Width="600" Height="30"
+                                        Visibility="{Binding IsChallengeMailingSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
                             </StackPanel>
 
-                            <!-- Email Body Editor (WYSIWYG with TinyMCE) -->
-                            <Border Grid.Row="2" BorderBrush="#CCCCCC" BorderThickness="1" Margin="5" Grid.RowSpan="2">
+                            <!-- Email Body Editor (WYSIWYG) -->
+                            <Border Grid.Row="1" BorderBrush="#CCCCCC" BorderThickness="1" Margin="5" Grid.RowSpan="2">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
@@ -1024,29 +1070,29 @@
                                     </Grid.RowDefinitions>
 
                                     <!-- Toolbar -->
-                                            <Border Grid.Row="0" Background="#F5F5F5" Padding="10" BorderBrush="#CCCCCC" BorderThickness="0,0,0,1">
-                                                <StackPanel>
-                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                                                        <TextBlock Text="✏️ Email Editor (WYSIWYG - CKEditor 4)" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Margin="0,0,15,0"/>
-                                                        <Button Content="🔄 Load Template" Click="LoadTemplate_Click" 
-                                                               Width="120" Height="28" Margin="0,0,5,0"
-                                                               ToolTip="Load the generated template into the editor"
-                                                               Background="#2196F3" Foreground="White"/>
-                                                        <Button Content="💾 Get HTML" Click="GetHtml_Click" 
-                                                               Width="100" Height="28" Margin="0,0,5,0"
-                                                               ToolTip="Get the HTML from the editor"
-                                                               Background="#4CAF50" Foreground="White"/>
-                                                        <Button Content="📊 Insert Table" Click="InsertTable_Click" 
-                                                               Width="110" Height="28" Margin="0,0,5,0"
-                                                               ToolTip="Insert a table at cursor position"
-                                                               Background="#FF9800" Foreground="White"/>
-                                                    </StackPanel>
-                                                    <TextBlock Text="ℹ️ Professional WYSIWYG Editor - 100% Free &amp; Open Source - Full table support" 
-                                                              FontStyle="Italic" Foreground="#666" FontSize="11"/>
-                                                </StackPanel>
-                                            </Border>
+                                    <Border Grid.Row="0" Background="#F5F5F5" Padding="10" BorderBrush="#CCCCCC" BorderThickness="0,0,0,1">
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                                                <TextBlock Text="✏️ Email Editor (WYSIWYG - CKEditor 4)" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Margin="0,0,15,0"/>
+                                                <Button Content="🔄 Load Template" Click="LoadTemplate_Click" 
+                                                       Width="120" Height="28" Margin="0,0,5,0"
+                                                       ToolTip="Load the generated template into the editor"
+                                                       Background="#2196F3" Foreground="White"/>
+                                                <Button Content="💾 Get HTML" Click="GetHtml_Click" 
+                                                       Width="100" Height="28" Margin="0,0,5,0"
+                                                       ToolTip="Get the HTML from the editor"
+                                                       Background="#4CAF50" Foreground="White"/>
+                                                <Button Content="📊 Insert Table" Click="InsertTable_Click" 
+                                                       Width="110" Height="28" Margin="0,0,5,0"
+                                                       ToolTip="Insert a table at cursor position"
+                                                       Background="#FF9800" Foreground="White"/>
+                                            </StackPanel>
+                                            <TextBlock Text="ℹ️ Professional WYSIWYG Editor - 100% Free &amp; Open Source - Full table support" 
+                                                      FontStyle="Italic" Foreground="#666" FontSize="11"/>
+                                        </StackPanel>
+                                    </Border>
 
-                                    <!-- WebView2 for TinyMCE Editor -->
+                                    <!-- WebView2 for CKEditor -->
                                     <Border Grid.Row="1" BorderBrush="#E0E0E0" BorderThickness="1,0,0,0">
                                         <Grid x:Name="WebViewContainer">
                                             <!-- WebView2 will be added programmatically -->
@@ -1057,8 +1103,8 @@
                         </Grid>
                     </GroupBox>
 
-                    <!-- Send Actions -->
-                    <GroupBox Grid.Row="2" Header="{Binding Localization[SendActions]}">
+                    <!-- Send Actions (Common for both) -->
+                    <GroupBox Grid.Row="3" Header="Send Actions">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -1066,34 +1112,69 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
+                            <!-- Test Email -->
                             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Localization[TestEmail]}" FontWeight="Bold" VerticalAlignment="Center" Margin="5"/>
+                                <TextBlock Text="Test Email:" FontWeight="Bold" VerticalAlignment="Center" Margin="5"/>
+                                <!-- Member Test Email -->
+                                <TextBox Text="{Binding MemberMailingViewModel.TestEmailAddress, UpdateSourceTrigger=PropertyChanged}" 
+                                        Width="250" Margin="5"
+                                        Visibility="{Binding IsMemberMailingSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <Button Content="📧 Send Test" Command="{Binding MemberMailingViewModel.SendTestEmailCommand}"
+                                       Background="#2196F3" Foreground="White" Margin="5" Width="120"
+                                       Visibility="{Binding IsMemberMailingSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                                <!-- Challenge Test Email -->
                                 <TextBox Text="{Binding ChallengeMailingViewModel.TestEmailAddress, UpdateSourceTrigger=PropertyChanged}" 
-                                        Width="250" Margin="5" ToolTip="{Binding Localization[TestEmailTooltip]}"/>
-                                <Button Content="{Binding Localization[SendTest]}" Command="{Binding ChallengeMailingViewModel.SendTestEmailCommand}"
-                                       Background="#2196F3" Foreground="White" Margin="5" Width="120"/>
+                                        Width="250" Margin="5"
+                                        Visibility="{Binding IsChallengeMailingSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <Button Content="📧 Send Test" Command="{Binding ChallengeMailingViewModel.SendTestEmailCommand}"
+                                       Background="#2196F3" Foreground="White" Margin="5" Width="120"
+                                       Visibility="{Binding IsChallengeMailingSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
                             </StackPanel>
 
-                            <Button Grid.Column="1" Content="{Binding Localization[SendToAllChallengers]}" 
+                            <!-- Send to All Button -->
+                            <!-- Member Send Button -->
+                            <Button Grid.Column="1" Content="📤 Send to All Members" 
+                                   Command="{Binding MemberMailingViewModel.SendToAllMembersCommand}"
+                                   Background="#FF9800" Foreground="White" FontWeight="Bold"
+                                   Width="200" Margin="5"
+                                   Visibility="{Binding IsMemberMailingSelected, Converter={StaticResource BoolToVisibilityConverter}}"
+                                   ToolTip="Send to all members from Members.json"/>
+
+                            <!-- Challenge Send Button -->
+                            <Button Grid.Column="1" Content="📤 Send to All Challengers" 
                                    Command="{Binding ChallengeMailingViewModel.SendToAllChallengersCommand}"
                                    Background="#4CAF50" Foreground="White" FontWeight="Bold"
-                                   Width="200" Margin="5"/>
+                                   Width="200" Margin="5"
+                                   Visibility="{Binding IsChallengeMailingSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
-                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
-                                       Visibility="{Binding ChallengeMailingViewModel.IsSending, Converter={StaticResource BoolToVisibilityConverter}}">
-                                <ProgressBar IsIndeterminate="True" Width="100" Height="20" Margin="5"/>
-                                <TextBlock Text="{Binding Localization[Sending]}" VerticalAlignment="Center" FontStyle="Italic"/>
+                            <!-- Progress Indicator -->
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <!-- Member Sending -->
+                                <StackPanel Orientation="Horizontal"
+                                           Visibility="{Binding MemberMailingViewModel.IsSending, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <ProgressBar IsIndeterminate="True" Width="100" Height="20" Margin="5"/>
+                                    <TextBlock Text="Sending..." VerticalAlignment="Center" FontStyle="Italic"/>
+                                </StackPanel>
+
+                                <!-- Challenge Sending -->
+                                <StackPanel Orientation="Horizontal"
+                                           Visibility="{Binding ChallengeMailingViewModel.IsSending, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <ProgressBar IsIndeterminate="True" Width="100" Height="20" Margin="5"/>
+                                    <TextBlock Text="Sending..." VerticalAlignment="Center" FontStyle="Italic"/>
+                                </StackPanel>
                             </StackPanel>
                         </Grid>
                     </GroupBox>
                 </Grid>
             </TabItem>
 
-        </TabControl>
 
-        <!-- Status Bar -->
-        <Border Grid.Row="2" Background="#EEEEEE" Padding="10" Margin="0,10,0,0">
-            <TextBlock Text="{Binding StatusMessage}" FontStyle="Italic" Foreground="#666666"/>
-        </Border>
-    </Grid>
-</Window>
+                                    </TabControl>
+
+                                    <!-- Status Bar -->
+                                    <Border Grid.Row="2" Background="#EEEEEE" Padding="10" Margin="0,10,0,0">
+                                        <TextBlock Text="{Binding StatusMessage}" FontStyle="Italic" Foreground="#666666"/>
+                                    </Border>
+                                </Grid>
+                            </Window>

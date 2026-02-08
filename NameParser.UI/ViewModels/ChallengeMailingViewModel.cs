@@ -185,14 +185,15 @@ namespace NameParser.UI.ViewModels
         {
             try
             {
+                StatusMessage = "Generating email template...";
                 var template = GenerateEmailTemplate();
                 EmailSubject = template.Subject;
                 EmailBody = template.Body;
-                StatusMessage = "Email template generated successfully!";
+                StatusMessage = "✅ Email template generated successfully! Click '🔄 Load Template' to view it in the editor.";
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Error generating template: {ex.Message}";
+                StatusMessage = $"❌ Error generating template: {ex.Message}";
                 MessageBox.Show($"Error generating template: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }

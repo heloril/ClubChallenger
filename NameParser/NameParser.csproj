@@ -204,6 +204,15 @@
     <None Update="Members.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="PDF\La Zatopek en Famille 10kms.pdf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PDF\La Zatopek en Famille 21kms.pdf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="PDF\La Zatopek en Famille 6.5kms.pdf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="NameParser.csproj.new" />
   </ItemGroup>
   <ItemGroup>
