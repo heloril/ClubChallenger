@@ -300,6 +300,7 @@ namespace NameParser.Application.Services
             for (int i = 0; i < individualResult.Length; i++)
             {
                 if (TryParseTime(individualResult[i], out TimeSpan memberTime) &&
+                    memberTime > TimeSpan.Zero &&  // Skip zero times
                     _pointsCalculationService.IsValidRaceTime(memberTime))
                 {
                     result.Time = memberTime;
@@ -322,6 +323,48 @@ namespace NameParser.Application.Services
 
                     result.IsValid = result.Members.Count > 0;
                     break;
+                }
+            }
+
+            // Fallback: If no valid time found in array, use extracted times for points calculation
+            if (result.Time == TimeSpan.Zero || !result.IsValid)
+            {
+                TimeSpan? timeForPoints = null;
+
+                // Prefer extracted race time, fall back to time per km
+                if (result.ExtractedRaceTime.HasValue && result.ExtractedRaceTime.Value > TimeSpan.Zero)
+                {
+                    timeForPoints = result.ExtractedRaceTime.Value;
+                }
+                else if (result.ExtractedTimePerKm.HasValue && result.ExtractedTimePerKm.Value > TimeSpan.Zero)
+                {
+                    timeForPoints = result.ExtractedTimePerKm.Value;
+                }
+
+                if (timeForPoints.HasValue)
+                {
+                    result.Time = timeForPoints.Value;
+
+                    // Find matching members if not already done
+                    if (result.Members.Count == 0)
+                    {
+                        result.Members = FindMatchingMembers(members, resultValue);
+
+                        // If no matching members but is winner, create a dummy member entry
+                        if (result.Members.Count == 0 && !result.IsMember && individualResult[0].Equals("TWINNER", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var nameParts = ExtractNameFromResult(individualResult);
+                            var winnerMember = new Member
+                            {
+                                FirstName = nameParts.firstName,
+                                LastName = nameParts.lastName,
+                                Email = "winner@external.com"
+                            };
+                            result.Members.Add(winnerMember);
+                        }
+                    }
+
+                    result.IsValid = result.Members.Count > 0;
                 }
             }
 

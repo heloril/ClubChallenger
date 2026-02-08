@@ -57,6 +57,12 @@ namespace NameParser.Infrastructure.Repositories
             // Parse the text to extract race results
             var parsedResults = ParsePdfText(pdfText, members);
 
+            // Deduplicate results by position - keep the most complete entry for each position
+            var deduplicatedResults = DeduplicateByPosition(parsedResults);
+
+            // Filter out non-representative results (race time < 10 minutes - likely parsing errors or pace times)
+            var filteredResults = FilterNonRepresentativeResults(deduplicatedResults);
+
             // Add header
             results.Add(0, CreateHeader());
 
@@ -67,14 +73,125 @@ namespace NameParser.Infrastructure.Repositories
                 results.Add(1, CreateReferenceEntry(referenceTime.Value));
             }
 
-            // Add all parsed results
+            // Add all deduplicated parsed results
             int id = 2;
-            foreach (var result in parsedResults.OrderBy(r => r.Position ?? int.MaxValue))
+            foreach (var result in filteredResults.OrderBy(r => r.Position ?? int.MaxValue))
             {
                 results.Add(id++, result.ToDelimitedString());
             }
 
             return results;
+        }
+
+        private List<ParsedPdfResult> FilterNonRepresentativeResults(List<ParsedPdfResult> results)
+        {
+            if (results.Count == 0)
+                return results;
+
+            const double MinRaceTimeMinutes = 10.0; // Minimum realistic race time is 10 minutes
+
+            var filtered = results
+                .Where(r =>
+                {
+                    // Keep if no race time (might have other valuable data)
+                    if (!r.RaceTime.HasValue)
+                        return true;
+
+                    // Remove if race time is exactly 00:00:00 (invalid/missing time)
+                    if (r.RaceTime.Value.TotalSeconds == 0)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"Filtered out result with zero race time: Position {r.Position}, " +
+                            $"Name: {r.FullName}, RaceTime: 00:00:00 (invalid time)");
+                        return false;
+                    }
+
+                    // Remove if race time is less than 10 minutes (likely parsing error)
+                    if (r.RaceTime.Value.TotalMinutes < MinRaceTimeMinutes)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"Filtered out non-representative result: Position {r.Position}, " +
+                            $"Name: {r.FullName}, RaceTime: {r.RaceTime.Value:mm\\:ss} " +
+                            $"(< {MinRaceTimeMinutes} min threshold)");
+                        return false;
+                    }
+
+                    return true;
+                })
+                .ToList();
+
+            var filteredCount = results.Count - filtered.Count;
+            if (filteredCount > 0)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Filtered {filteredCount} non-representative results (zero time or < {MinRaceTimeMinutes} minutes) " +
+                    $"({results.Count} -> {filtered.Count})");
+            }
+
+            return filtered;
+        }
+
+        private List<ParsedPdfResult> DeduplicateByPosition(List<ParsedPdfResult> results)
+        {
+            if (results.Count == 0)
+                return results;
+
+            // Group by position and keep the most complete entry for each
+            var deduplicated = results
+                .Where(r => r.Position.HasValue)
+                .GroupBy(r => r.Position.Value)
+                .Select(group =>
+                {
+                    if (group.Count() == 1)
+                        return group.First();
+
+                    // Multiple entries with same position - log and merge
+                    System.Diagnostics.Debug.WriteLine($"Duplicate position {group.Key} found ({group.Count()} entries) - merging to most complete entry");
+
+                    // Select the most complete entry based on scoring:
+                    // - Has RaceTime: +10 points
+                    // - Has Speed: +5 points
+                    // - Has TimePerKm: +5 points
+                    // - Has Team: +3 points
+                    // - Has Sex: +2 points
+                    // - Has AgeCategory: +2 points
+                    // - Has valid name (not "Unknown"): +20 points
+                    var bestEntry = group
+                        .OrderByDescending(r =>
+                        {
+                            int score = 0;
+                            if (r.RaceTime.HasValue) score += 10;
+                            if (r.Speed.HasValue) score += 5;
+                            if (r.TimePerKm.HasValue) score += 5;
+                            if (!string.IsNullOrEmpty(r.Team)) score += 3;
+                            if (!string.IsNullOrEmpty(r.Sex)) score += 2;
+                            if (!string.IsNullOrEmpty(r.AgeCategory)) score += 2;
+                            if (!string.IsNullOrEmpty(r.FirstName) && r.FirstName != "Unknown") score += 20;
+                            if (!string.IsNullOrEmpty(r.LastName) && r.LastName != "Unknown") score += 20;
+                            return score;
+                        })
+                        .First();
+
+                    System.Diagnostics.Debug.WriteLine($"  Selected entry: {bestEntry.FullName} (score-based selection)");
+                    return bestEntry;
+                })
+                .ToList();
+
+            // Add back results without positions (shouldn't happen but handle gracefully)
+            var resultsWithoutPosition = results.Where(r => !r.Position.HasValue).ToList();
+            if (resultsWithoutPosition.Any())
+            {
+                System.Diagnostics.Debug.WriteLine($"Found {resultsWithoutPosition.Count} results without position - keeping all");
+                deduplicated.AddRange(resultsWithoutPosition);
+            }
+
+            var duplicateCount = results.Count - deduplicated.Count;
+            if (duplicateCount > 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"Deduplication: removed {duplicateCount} duplicate entries ({results.Count} -> {deduplicated.Count})");
+            }
+
+            return deduplicated;
         }
 
         private string ExtractTextFromPdf(string filePath)
@@ -88,8 +205,21 @@ namespace NameParser.Infrastructure.Repositories
 
                     for (int page = 1; page <= pdfDocument.GetNumberOfPages(); page++)
                     {
-                        ITextExtractionStrategy strategy = new LocationTextExtractionStrategy();
-                        string pageText = PdfTextExtractor.GetTextFromPage(pdfDocument.GetPage(page), strategy);
+                        // Try smart table extraction first
+                        string pageText = TrySmartTableExtraction(pdfDocument.GetPage(page));
+
+                        // If smart extraction failed or produced poor results, fallback to standard
+                        if (string.IsNullOrWhiteSpace(pageText))
+                        {
+                            ITextExtractionStrategy strategy = new LocationTextExtractionStrategy();
+                            pageText = PdfTextExtractor.GetTextFromPage(pdfDocument.GetPage(page), strategy);
+                            System.Diagnostics.Debug.WriteLine($"Page {page}: Using standard extraction (smart extraction failed quality checks)");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Page {page}: Using smart table extraction");
+                        }
+
                         text.AppendLine(pageText);
                     }
 
@@ -99,6 +229,280 @@ namespace NameParser.Infrastructure.Repositories
             catch (Exception ex)
             {
                 throw new InvalidOperationException($"Failed to extract text from PDF: {ex.Message}", ex);
+            }
+        }
+
+        private string TrySmartTableExtraction(iText.Kernel.Pdf.PdfPage page)
+        {
+            try
+            {
+                var smartStrategy = new SmartTableExtractionStrategy();
+                var extractedText = PdfTextExtractor.GetTextFromPage(page, smartStrategy);
+
+                // Get the reconstructed table-aware text
+                var reconstructedText = smartStrategy.GetReconstructedText();
+
+                if (string.IsNullOrWhiteSpace(reconstructedText))
+                {
+                    return null;
+                }
+
+                // Validate the extraction quality against standard extraction
+                var standardStrategy = new LocationTextExtractionStrategy();
+                var standardText = PdfTextExtractor.GetTextFromPage(page, standardStrategy);
+
+                var smartLines = reconstructedText.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).ToArray();
+                var standardLines = standardText.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).ToArray();
+
+                // Quality checks
+                bool qualityChecksPassed = true;
+
+                // 1. Line count shouldn't increase dramatically (max 15% more)
+                if (smartLines.Length > standardLines.Length * 1.15)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Smart extraction rejected: too many lines ({smartLines.Length} vs {standardLines.Length})");
+                    qualityChecksPassed = false;
+                }
+
+                // 2. Should find table structure (rows with position numbers)
+                var rowsWithNumbers = smartLines.Count(l => Regex.IsMatch(l, @"^\s*\d{1,4}\s+"));
+                if (rowsWithNumbers < 5 && standardLines.Length > 20)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Smart extraction rejected: insufficient table rows detected ({rowsWithNumbers})");
+                    qualityChecksPassed = false;
+                }
+
+                // 3. Total character count shouldn't differ by more than 25%
+                var smartCharCount = string.Concat(smartLines).Length;
+                var standardCharCount = string.Concat(standardLines).Length;
+                if (standardCharCount > 0)
+                {
+                    var charDiffPercent = Math.Abs(smartCharCount - standardCharCount) / (double)standardCharCount * 100;
+
+                    if (charDiffPercent > 25)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Smart extraction rejected: character count difference too high ({charDiffPercent:F1}%)");
+                        qualityChecksPassed = false;
+                    }
+                }
+
+                if (!qualityChecksPassed)
+                {
+                    return null; // Signal to use standard extraction
+                }
+
+                System.Diagnostics.Debug.WriteLine($"Smart extraction passed quality checks: {smartLines.Length} lines, {rowsWithNumbers} data rows");
+                return reconstructedText;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Smart table extraction failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        // Smart Table Extraction Strategy - Handles tabular race results with intelligent column detection
+        private class SmartTableExtractionStrategy : ITextExtractionStrategy
+        {
+            private class TextChunk
+            {
+                public string Text { get; set; }
+                public float X { get; set; }
+                public float Y { get; set; }
+                public float Width { get; set; }
+                public float FontSize { get; set; }
+            }
+
+            private readonly List<TextChunk> _textChunks = new List<TextChunk>();
+            private readonly HashSet<EventType> _supportedEvents = new HashSet<EventType> { EventType.RENDER_TEXT };
+
+            public void EventOccurred(iText.Kernel.Pdf.Canvas.Parser.Data.IEventData data, EventType type)
+            {
+                if (type == EventType.RENDER_TEXT)
+                {
+                    var renderInfo = (iText.Kernel.Pdf.Canvas.Parser.Data.TextRenderInfo)data;
+                    var text = renderInfo.GetText();
+
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        var baseline = renderInfo.GetBaseline();
+                        var startPoint = baseline.GetStartPoint();
+                        var endPoint = baseline.GetEndPoint();
+                        var fontSize = renderInfo.GetFontSize();
+
+                        _textChunks.Add(new TextChunk
+                        {
+                            Text = text.Trim(),
+                            X = startPoint.Get(0),
+                            Y = startPoint.Get(1),
+                            Width = endPoint.Get(0) - startPoint.Get(0),
+                            FontSize = fontSize
+                        });
+                    }
+                }
+            }
+
+            public ICollection<EventType> GetSupportedEvents()
+            {
+                return _supportedEvents;
+            }
+
+            public string GetResultantText()
+            {
+                return GetReconstructedText();
+            }
+
+            public string GetReconstructedText()
+            {
+                if (_textChunks.Count == 0)
+                    return null;
+
+                // Step 1: Group chunks by Y coordinate (rows) with adaptive tolerance
+                var rows = GroupIntoRows(_textChunks);
+
+                // Step 2: Detect column boundaries across all rows
+                var columnBoundaries = DetectColumnBoundaries(rows);
+
+                // Step 3: Build text with proper column alignment
+                var sb = new StringBuilder();
+                int processedRows = 0;
+
+                foreach (var row in rows.OrderByDescending(r => r.Key))
+                {
+                    var rowChunks = row.Value.OrderBy(c => c.X).ToList();
+
+                    // Skip rows that are too short (likely page numbers or footers)
+                    var rowText = string.Join("", rowChunks.Select(c => c.Text));
+                    if (rowText.Length < 3)
+                        continue;
+
+                    // Build row with column-aware spacing
+                    var lineBuilder = new StringBuilder();
+                    for (int i = 0; i < rowChunks.Count; i++)
+                    {
+                        var chunk = rowChunks[i];
+                        lineBuilder.Append(chunk.Text);
+
+                        // Add appropriate spacing to next chunk
+                        if (i < rowChunks.Count - 1)
+                        {
+                            var nextChunk = rowChunks[i + 1];
+                            var gap = nextChunk.X - (chunk.X + chunk.Width);
+
+                            // Determine if this is a column boundary
+                            if (IsColumnBoundary(chunk.X + chunk.Width, nextChunk.X, columnBoundaries))
+                            {
+                                lineBuilder.Append("  "); // Double space for column separation
+                            }
+                            else if (gap > 1.0f)
+                            {
+                                lineBuilder.Append(" "); // Single space for word separation
+                            }
+                            // else: adjacent text, no space
+                        }
+                    }
+
+                    sb.AppendLine(lineBuilder.ToString());
+                    processedRows++;
+
+                    // Safety limit
+                    if (processedRows > 1000)
+                    {
+                        System.Diagnostics.Debug.WriteLine("Smart extraction exceeded 1000 rows, stopping");
+                        break;
+                    }
+                }
+
+                return sb.ToString();
+            }
+
+            private Dictionary<float, List<TextChunk>> GroupIntoRows(List<TextChunk> chunks)
+            {
+                var rows = new Dictionary<float, List<TextChunk>>();
+
+                // Adaptive Y-tolerance based on median font size
+                var medianFontSize = chunks.OrderBy(c => c.FontSize).Skip(chunks.Count / 2).FirstOrDefault()?.FontSize ?? 10f;
+                var yTolerance = medianFontSize * 0.3f; // 30% of font size
+
+                foreach (var chunk in chunks)
+                {
+                    // Find existing row within tolerance
+                    var matchingRow = rows.Keys.FirstOrDefault(y => Math.Abs(y - chunk.Y) < yTolerance);
+
+                    if (matchingRow != default(float))
+                    {
+                        rows[matchingRow].Add(chunk);
+                    }
+                    else
+                    {
+                        rows[chunk.Y] = new List<TextChunk> { chunk };
+                    }
+                }
+
+                return rows;
+            }
+
+            private List<float> DetectColumnBoundaries(Dictionary<float, List<TextChunk>> rows)
+            {
+                var boundaries = new List<float>();
+
+                // Collect all gap positions across rows
+                var gapPositions = new List<float>();
+
+                foreach (var row in rows.Values)
+                {
+                    var sortedChunks = row.OrderBy(c => c.X).ToList();
+                    for (int i = 0; i < sortedChunks.Count - 1; i++)
+                    {
+                        var gap = sortedChunks[i + 1].X - (sortedChunks[i].X + sortedChunks[i].Width);
+
+                        // Significant gaps (> 5 units) might be column boundaries
+                        if (gap > 5.0f)
+                        {
+                            var boundaryPos = sortedChunks[i].X + sortedChunks[i].Width + (gap / 2);
+                            gapPositions.Add(boundaryPos);
+                        }
+                    }
+                }
+
+                // Cluster gap positions to find consistent column boundaries
+                if (gapPositions.Count > 0)
+                {
+                    var sortedGaps = gapPositions.OrderBy(g => g).ToList();
+                    var clusters = new List<List<float>>();
+                    var currentCluster = new List<float> { sortedGaps[0] };
+
+                    for (int i = 1; i < sortedGaps.Count; i++)
+                    {
+                        if (sortedGaps[i] - sortedGaps[i - 1] < 10.0f) // Within 10 units = same boundary
+                        {
+                            currentCluster.Add(sortedGaps[i]);
+                        }
+                        else
+                        {
+                            if (currentCluster.Count >= 3) // At least 3 occurrences to be valid
+                            {
+                                boundaries.Add(currentCluster.Average());
+                            }
+                            currentCluster = new List<float> { sortedGaps[i] };
+                        }
+                    }
+
+                    // Don't forget last cluster
+                    if (currentCluster.Count >= 3)
+                    {
+                        boundaries.Add(currentCluster.Average());
+                    }
+                }
+
+                return boundaries;
+            }
+
+            private bool IsColumnBoundary(float startX, float endX, List<float> boundaries)
+            {
+                // Check if any boundary falls between start and end
+                const float tolerance = 15.0f;
+                return boundaries.Any(b => b > startX - tolerance && b < endX + tolerance);
             }
         }
 
@@ -130,6 +534,7 @@ namespace NameParser.Infrastructure.Repositories
             int skippedHeaders = 0;
             int skippedDsq = 0;
             int failedParses = 0;
+            string orphanedTimeLine = null; // Buffer for times on separate lines
 
             foreach (var line in lines)
             {
@@ -149,8 +554,24 @@ namespace NameParser.Infrastructure.Repositories
                     continue;
                 }
 
+                // Check if this line is an orphaned time (time + points without position)
+                // Pattern: "00:22:26 898" or "00:22:26"
+                if (IsOrphanedTimeLine(trimmedLine))
+                {
+                    orphanedTimeLine = trimmedLine;
+                    continue;
+                }
+
+                // If we have an orphaned time from previous line, prepend it
+                var lineToProcess = trimmedLine;
+                if (orphanedTimeLine != null)
+                {
+                    lineToProcess = orphanedTimeLine + " " + trimmedLine;
+                    orphanedTimeLine = null; // Clear buffer
+                }
+
                 // Try to parse the line FIRST (parser may need to see headers to detect columns)
-                var result = selectedParser.ParseLine(trimmedLine, members);
+                var result = selectedParser.ParseLine(lineToProcess, members);
                 if (result != null)
                 {
                     results.Add(result);
@@ -207,6 +628,27 @@ namespace NameParser.Infrastructure.Repositories
             }
 
             return results;
+        }
+
+        private bool IsOrphanedTimeLine(string line)
+        {
+            // Check if line contains ONLY time and possibly points, no position number at start
+            var trimmed = line.Trim();
+
+            // If line starts with a number 1-4 digits, it's NOT an orphaned time (it's a position)
+            if (trimmed.Length > 0 && char.IsDigit(trimmed[0]))
+            {
+                var posMatch = Regex.Match(trimmed, @"^(\d{1,4})[\s\.\,]");
+                if (posMatch.Success)
+                {
+                    return false; // This has a position, not orphaned
+                }
+            }
+
+            // Check if line matches time pattern (with optional points)
+            // Pattern: "00:22:26 898" or "00:22:26" or "00:21:37 936"
+            var orphanedTimePattern = @"^(\d{1,2}:\d{2}:\d{2}|\d{1,2}:\d{2})\s*(\d+)?$";
+            return Regex.IsMatch(trimmed, orphanedTimePattern);
         }
 
         private bool IsHeaderLine(string line)
@@ -1985,5 +2427,121 @@ namespace NameParser.Infrastructure.Repositories
                 return sb.ToString();
             }
         }
+
+        // EXPERIMENTAL: Table-aware text extraction strategy (currently disabled)
+        /*
+        // Table-aware text extraction strategy
+        private class TableAwareTextExtractionStrategy : LocationTextExtractionStrategy
+        {
+            private class TextChunk
+            {
+                public string Text { get; set; }
+                public float X { get; set; }
+                public float Y { get; set; }
+                public float Width { get; set; }
+            }
+
+            private readonly List<TextChunk> _textChunks = new List<TextChunk>();
+
+            public override void EventOccurred(iText.Kernel.Pdf.Canvas.Parser.Data.IEventData data, iText.Kernel.Pdf.Canvas.Parser.EventType type)
+            {
+                base.EventOccurred(data, type);
+
+                if (type == iText.Kernel.Pdf.Canvas.Parser.EventType.RENDER_TEXT)
+                {
+                    var renderInfo = (iText.Kernel.Pdf.Canvas.Parser.Data.TextRenderInfo)data;
+                    var text = renderInfo.GetText();
+
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        var baseline = renderInfo.GetBaseline();
+                        var startPoint = baseline.GetStartPoint();
+                        var endPoint = baseline.GetEndPoint();
+
+                        _textChunks.Add(new TextChunk
+                        {
+                            Text = text,
+                            X = startPoint.Get(0),
+                            Y = startPoint.Get(1),
+                            Width = endPoint.Get(0) - startPoint.Get(0)
+                        });
+                    }
+                }
+            }
+
+            public string GetReconstructedText()
+            {
+                if (_textChunks.Count == 0)
+                    return null;
+
+                // Group chunks by Y coordinate (same row) with strict tolerance
+                const float yTolerance = 1.5f; // Stricter tolerance
+                var rows = new List<List<TextChunk>>();
+
+                foreach (var chunk in _textChunks.OrderByDescending(c => c.Y))
+                {
+                    var existingRow = rows.FirstOrDefault(r => 
+                        Math.Abs(r[0].Y - chunk.Y) < yTolerance);
+
+                    if (existingRow != null)
+                    {
+                        existingRow.Add(chunk);
+                    }
+                    else
+                    {
+                        rows.Add(new List<TextChunk> { chunk });
+                    }
+                }
+
+                // Build text from rows
+                var sb = new StringBuilder();
+                int lineCount = 0;
+
+                foreach (var row in rows)
+                {
+                    // Sort chunks in row by X coordinate (left to right)
+                    var sortedChunks = row.OrderBy(c => c.X).ToList();
+
+                    // Skip rows with too few characters (noise)
+                    var rowText = string.Join("", sortedChunks.Select(c => c.Text));
+                    if (rowText.Length < 2)
+                        continue;
+
+                    // Detect if chunks should be separated or joined
+                    for (int i = 0; i < sortedChunks.Count; i++)
+                    {
+                        var chunk = sortedChunks[i];
+                        sb.Append(chunk.Text);
+
+                        // Add space if next chunk is far enough away
+                        if (i < sortedChunks.Count - 1)
+                        {
+                            var nextChunk = sortedChunks[i + 1];
+                            var gap = nextChunk.X - (chunk.X + chunk.Width);
+
+                            // If gap is significant, add space(s)
+                            if (gap > 2.0f)
+                            {
+                                // Single space for most gaps
+                                sb.Append(' ');
+                            }
+                        }
+                    }
+
+                    sb.AppendLine();
+                    lineCount++;
+
+                    // Safety check: if too many lines, something might be wrong
+                    if (lineCount > 500)
+                    {
+                        System.Diagnostics.Debug.WriteLine("Table reconstruction exceeded 500 lines, stopping");
+                        break;
+                    }
+                }
+
+                return sb.ToString();
+            }
+        }
+        */
     }
 }
