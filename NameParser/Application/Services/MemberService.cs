@@ -58,7 +58,9 @@ namespace NameParser.Application.Services
 
         private string GetMemberKey(Member member)
         {
-            return $"{member.FirstName?.Trim().ToLowerInvariant()}|{member.LastName?.Trim().ToLowerInvariant()}";
+            var normalizedFirstName = member.FirstName?.NormalizeForComparison() ?? "";
+            var normalizedLastName = member.LastName?.NormalizeForComparison() ?? "";
+            return $"{normalizedFirstName}|{normalizedLastName}";
         }
     }
 }

@@ -39,7 +39,15 @@ namespace NameParser.Domain.Entities
         public override bool Equals(object obj)
         {
             if (obj is Member other)
-                return FirstName == other.FirstName && LastName == other.LastName;
+            {
+                var normalizedFirstName = FirstName?.NormalizeForComparison() ?? "";
+                var normalizedLastName = LastName?.NormalizeForComparison() ?? "";
+                var otherNormalizedFirstName = other.FirstName?.NormalizeForComparison() ?? "";
+                var otherNormalizedLastName = other.LastName?.NormalizeForComparison() ?? "";
+
+                return normalizedFirstName == otherNormalizedFirstName && 
+                       normalizedLastName == otherNormalizedLastName;
+            }
             return false;
         }
 
@@ -48,8 +56,10 @@ namespace NameParser.Domain.Entities
             unchecked
             {
                 int hash = 17;
-                hash = hash * 23 + (FirstName?.GetHashCode() ?? 0);
-                hash = hash * 23 + (LastName?.GetHashCode() ?? 0);
+                var normalizedFirstName = FirstName?.NormalizeForComparison() ?? "";
+                var normalizedLastName = LastName?.NormalizeForComparison() ?? "";
+                hash = hash * 23 + normalizedFirstName.GetHashCode();
+                hash = hash * 23 + normalizedLastName.GetHashCode();
                 return hash;
             }
         }

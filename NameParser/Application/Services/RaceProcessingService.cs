@@ -541,10 +541,17 @@ namespace NameParser.Application.Services
 
         private List<Member> FindMatchingMembers(List<Member> members, string resultValue)
         {
+            // Normalize the result value for comparison
+            var normalizedResult = resultValue.NormalizeForComparison();
+
             return members.Where(member =>
-                resultValue.RemoveDiacritics().Contains(member.FirstName.RemoveDiacritics(), StringComparison.InvariantCultureIgnoreCase) &&
-                resultValue.RemoveDiacritics().Contains(member.LastName.RemoveDiacritics(), StringComparison.InvariantCultureIgnoreCase))
-                .ToList();
+            {
+                var normalizedFirstName = member.FirstName.NormalizeForComparison();
+                var normalizedLastName = member.LastName.NormalizeForComparison();
+
+                return normalizedResult.Contains(normalizedFirstName) && 
+                       normalizedResult.Contains(normalizedLastName);
+            }).ToList();
         }
     }
 }

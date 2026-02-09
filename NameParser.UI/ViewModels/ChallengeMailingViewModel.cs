@@ -565,7 +565,7 @@ namespace NameParser.UI.ViewModels
         {
 //#if MAILKIT_INSTALLED
             var message = new MimeMessage();
-            message.From.Add(new MailboxAddress("Challenge Administrator", _gmailAddress));
+            message.From.Add(new MailboxAddress("Challenge Lucien Campeggio", _gmailAddress));
             message.To.Add(new MailboxAddress("", toEmail));
             message.Subject = subject;
 

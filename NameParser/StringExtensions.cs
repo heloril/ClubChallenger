@@ -21,4 +21,24 @@ public static class StringExtensions
         }
         return stringBuilder.ToString().Normalize(NormalizationForm.FormC);
     }
+
+    /// <summary>
+    /// Normalizes a name for comparison by removing diacritics and hyphens, and converting to lowercase.
+    /// Used for matching names like "Jean-Marc" with "Jean Marc".
+    /// </summary>
+    public static string NormalizeForComparison(this string text)
+    {
+        if (text == null) return null;
+
+        // Remove diacritics first
+        string normalized = RemoveDiacritics(text);
+
+        // Remove hyphens (replace with space to keep word separation)
+        normalized = normalized.Replace("-", " ");
+
+        // Normalize whitespace (replace multiple spaces with single space)
+        normalized = System.Text.RegularExpressions.Regex.Replace(normalized, @"\s+", " ");
+
+        return normalized.Trim().ToLowerInvariant();
+    }
 }
