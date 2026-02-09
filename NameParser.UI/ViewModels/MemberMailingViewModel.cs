@@ -363,13 +363,50 @@ namespace NameParser.UI.ViewModels
 
                 foreach (var raceEvent in currentWeekRaces)
                 {
-                    // Get available distances from the RaceEvent configuration
+                    // Get available distances from the RaceEvent configuration (pre-configured distances)
                     var availableDistances = _raceEventRepository.GetDistancesByEvent(raceEvent.Id);
+
+                    // Debug logging
+                    System.Diagnostics.Debug.WriteLine($"[MAILING] Race Event: '{raceEvent.Name}' (ID: {raceEvent.Id})");
+                    System.Diagnostics.Debug.WriteLine($"[MAILING]   Pre-configured distances: {availableDistances.Count}");
+
+                    // If no pre-configured distances, fall back to actual race distances from past editions
+                    if (!availableDistances.Any())
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[MAILING]   No pre-configured distances, checking past races...");
+                        var existingRaces = _raceRepository.GetRacesByRaceEvent(raceEvent.Id);
+                        System.Diagnostics.Debug.WriteLine($"[MAILING]   Found {existingRaces.Count} past races");
+
+                        if (existingRaces.Any())
+                        {
+                            // Convert RaceEntity distances to RaceEventDistanceEntity format for display
+                            availableDistances = existingRaces
+                                .Select(r => new NameParser.Infrastructure.Data.Models.RaceEventDistanceEntity
+                                {
+                                    DistanceKm = r.DistanceKm
+                                })
+                                .GroupBy(d => d.DistanceKm) // Remove duplicates
+                                .Select(g => g.First())
+                                .ToList();
+
+                            System.Diagnostics.Debug.WriteLine($"[MAILING]   Using {availableDistances.Count} distance(s) from past races: {string.Join(", ", availableDistances.Select(d => d.DistanceKm))}");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[MAILING]   No past races found - will display 'A confirmer'");
+                        }
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[MAILING]   Using pre-configured distances: {string.Join(", ", availableDistances.Select(d => d.DistanceKm))}");
+                    }
 
                     // Format distances with 1 decimal place
                     var distanceStr = availableDistances.Any() 
                         ? string.Join(", ", availableDistances.OrderBy(d => d.DistanceKm).Select(d => $"{d.DistanceKm.ToString("0.0", CultureInfo.InvariantCulture)} km")) 
                         : "À confirmer";
+
+                    System.Diagnostics.Debug.WriteLine($"[MAILING]   Final distance string: '{distanceStr}'");
 
                     sb.AppendLine("<tr>");
                     sb.AppendLine($"<td style='padding: 8px;'>{raceEvent.EventDate.ToString("dd/MM/yyyy", culture)}</td>");

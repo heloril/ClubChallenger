@@ -238,12 +238,30 @@ namespace NameParser.UI.ViewModels
                 sb.AppendLine($"<p><strong>📍 {(isFrench ? "Date" : "Date")}:</strong> {nextRace.EventDate.ToString(isFrench ? "dddd dd MMMM yyyy" : "dddd, MMMM dd yyyy", isFrench ? CultureInfo.GetCultureInfo("fr-FR") : CultureInfo.InvariantCulture)}</p>");
                 sb.AppendLine($"<p><strong>📍 {(isFrench ? "Lieu" : "Location")}:</strong> {nextRace.Location ?? (isFrench ? "À confirmer" : "TBA")}</p>");
 
-                // Get distances for next race
-                var nextEventRaces = _raceRepository.GetRacesByRaceEvent(nextRace.Id);
-                if (nextEventRaces.Any())
+                // Get distances for next race - Check RaceEventDistances first, then fall back to past races
+                var nextRaceDistances = _raceEventRepository.GetDistancesByEvent(nextRace.Id);
+
+                if (!nextRaceDistances.Any())
                 {
-                    var distances = nextEventRaces.Select(r => r.DistanceKm).Distinct().OrderBy(d => d);
-                    sb.AppendLine($"<p><strong>🏃 {(isFrench ? "Distances" : "Distances")}:</strong> {string.Join(", ", distances.Select(d => $"{d} km"))}</p>");
+                    var nextEventRaces = _raceRepository.GetRacesByRaceEvent(nextRace.Id);
+                    if (nextEventRaces.Any())
+                    {
+                        // Convert to RaceEventDistanceEntity format
+                        nextRaceDistances = nextEventRaces
+                            .Select(r => new RaceEventDistanceEntity
+                            {
+                                DistanceKm = r.DistanceKm
+                            })
+                            .GroupBy(d => d.DistanceKm)
+                            .Select(g => g.First())
+                            .ToList();
+                    }
+                }
+
+                if (nextRaceDistances.Any())
+                {
+                    var distances = nextRaceDistances.Select(d => d.DistanceKm).Distinct().OrderBy(d => d);
+                    sb.AppendLine($"<p><strong>🏃 {(isFrench ? "Distances" : "Distances")}:</strong> {string.Join(", ", distances.Select(d => $"{d.ToString("0.0", CultureInfo.InvariantCulture)} km"))}</p>");
                 }
 
                 if (!string.IsNullOrEmpty(nextRace.WebsiteUrl))
@@ -272,12 +290,32 @@ namespace NameParser.UI.ViewModels
 
                 foreach (var race in upcomingRaces)
                 {
-                    var raceDistances = _raceRepository.GetRacesByRaceEvent(race.Id)
-                        .Select(r => r.DistanceKm)
-                        .Distinct()
-                        .OrderBy(d => d)
-                        .ToList();
-                    var distanceStr = raceDistances.Any() ? string.Join(", ", raceDistances.Select(d => $"{d}km")) : "";// : (isFrench ? "À confirmer" : "TBA");
+                    // Get available distances from RaceEventDistances first (pre-configured)
+                    var availableDistances = _raceEventRepository.GetDistancesByEvent(race.Id);
+
+                    // If no pre-configured distances, fall back to actual race distances from past editions
+                    if (!availableDistances.Any())
+                    {
+                        var existingRaces = _raceRepository.GetRacesByRaceEvent(race.Id);
+                        if (existingRaces.Any())
+                        {
+                            // Convert RaceEntity distances to RaceEventDistanceEntity format
+                            availableDistances = existingRaces
+                                .Select(r => new RaceEventDistanceEntity
+                                {
+                                    DistanceKm = r.DistanceKm
+                                })
+                                .GroupBy(d => d.DistanceKm) // Remove duplicates
+                                .Select(g => g.First())
+                                .ToList();
+                        }
+                    }
+
+                    // Format distances with proper spacing and decimal
+                    var distanceStr = availableDistances.Any() 
+                        ? string.Join(", ", availableDistances.OrderBy(d => d.DistanceKm).Select(d => $"{d.DistanceKm.ToString("0.0", CultureInfo.InvariantCulture)} km"))
+                        : (isFrench ? "À confirmer" : "TBA");
+
                     sb.AppendLine($"<li style='padding: 5px 0;'>• <strong>{race.Name}</strong> - {race.EventDate:dd/MM/yyyy} - {distanceStr}</li>");
                 }
 
