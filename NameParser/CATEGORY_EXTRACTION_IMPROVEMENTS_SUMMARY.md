@@ -58,12 +58,12 @@ private bool IsValidCategoryPhrase(string phrase)
 
 ```csharp
 { "category", new[] { 
-    "cat.", "cat ", "catég.", "catégorie", 
+    "cat.", "cat ", "catég.", "catégorie", "Catégorie", 
     "categ.", "category", "cat°" 
 }},
 { "positioncat", new[] { 
     "pl./c.", "pl./cat.", "pl. cat", "pl.cat",
-    "clas. cat", "clas.cat", "pos.cat", 
+    "clas. cat", "clas.cat", "pos.cat", "P.Ca",
     "classement cat", "cl.cat", "pos/cat" 
 }},
 { "sex", new[] { 

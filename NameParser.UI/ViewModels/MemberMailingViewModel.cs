@@ -176,7 +176,7 @@ namespace NameParser.UI.ViewModels
 
             // Get start and end of previous week
             var startOfPreviousWeek = startOfWeek.AddDays(-7);
-            var endOfPreviousWeek = startOfWeek.AddDays(-1);
+            var endOfPreviousWeek = startOfWeek.AddDays(0);
 
             // Get all race events
             var allRaceEvents = _raceEventRepository.GetAll();
@@ -194,12 +194,12 @@ namespace NameParser.UI.ViewModels
                 .ToList();
 
             // Subject
-            var subject = $"Club Newsletter - {MailingDate.ToString("dd/MM/yyyy", culture)}";
+            var subject = $"Entraînements de la semaine - {MailingDate.ToString("dd/MM/yyyy", culture)}";
 
             sb.AppendLine("<div style='font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;'>");
 
             // Header
-            sb.AppendLine("<h1 style='color: #FF9800;'>🏃 Newsletter du Club</h1>");
+            sb.AppendLine("<h1 style='color: #FF9800;'>🏃 Newsletter / Entraînements de la semaine</h1>");
             sb.AppendLine($"<p style='font-size: 14px; color: #666;'>Semaine du {startOfWeek.ToString("dd MMMM yyyy", culture)} au {endOfWeek.ToString("dd MMMM yyyy", culture)}</p>");
             sb.AppendLine("<hr style='border: 1px solid #FF9800;'/>");
 
@@ -215,7 +215,7 @@ namespace NameParser.UI.ViewModels
             sb.AppendLine("</div>");
             sb.AppendLine("<div style='margin-left: 40px;'>");
             sb.AppendLine("<p style='margin: 5px 0; color: #555;'><strong>Lieu :</strong> Rendez-vous à la piste avec Fernand</p>");
-            sb.AppendLine("<p style='margin: 5px 0; color: #888; font-style: bold;'>[Programme à définir]</p>");
+            sb.AppendLine("<p style='margin: 5px 0; color: #555; font-style: bold;'><strong>[Programme à définir]</strong></p>");
             sb.AppendLine("</div>");
             sb.AppendLine("</div>");
 
@@ -311,10 +311,18 @@ namespace NameParser.UI.ViewModels
                             {
                                 var rowStyle = (c.Position ?? 0) % 2 == 0 ? "background-color: #f2f2f2;" : "";
 
+                                // Format names: FirstName as PascalCase, LastName as UPPERCASE
+                                var formattedFirstName = string.IsNullOrWhiteSpace(c.MemberFirstName) 
+                                    ? "-" 
+                                    : CultureInfo.CurrentCulture.TextInfo.ToTitleCase(c.MemberFirstName.ToLower());
+                                var formattedLastName = string.IsNullOrWhiteSpace(c.MemberLastName) 
+                                    ? "-" 
+                                    : c.MemberLastName.ToUpper();
+
                                 sb.AppendLine($"<tr style='{rowStyle}'>");
                                 sb.AppendLine($"<td style='padding: 8px;'>{(c.Position.HasValue ? c.Position.ToString() : "-")}</td>");
-                                sb.AppendLine($"<td style='padding: 8px;'>{(string.IsNullOrWhiteSpace(c.MemberFirstName) ? "-" : c.MemberFirstName)}</td>");
-                                sb.AppendLine($"<td style='padding: 8px;'>{(string.IsNullOrWhiteSpace(c.MemberLastName) ? "-" : c.MemberLastName.ToUpper())}</td>");
+                                sb.AppendLine($"<td style='padding: 8px;'>{formattedFirstName}</td>");
+                                sb.AppendLine($"<td style='padding: 8px;'>{formattedLastName}</td>");
                                 sb.AppendLine($"<td style='padding: 8px;'>{(c.RaceTime.HasValue ? c.RaceTime.Value.ToString(@"hh\:mm\:ss") : "-")}</td>");
                                 sb.AppendLine($"<td style='padding: 8px;'>{(c.TimePerKm.HasValue ? c.TimePerKm.Value.ToString(@"hh\:mm\:ss") : "-")}</td>");
                                 sb.AppendLine($"<td style='padding: 8px;'>{(c.Speed.HasValue ? c.Speed.Value.ToString("F2", CultureInfo.InvariantCulture) : "-")}</td>");
@@ -458,20 +466,28 @@ namespace NameParser.UI.ViewModels
                     return;
                 }
 
+                // Clean and categorize email addresses
                 var memberEmails = members
                     .Where(m => !string.IsNullOrWhiteSpace(m.Email))
-                    .Select(m => m.Email.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Select(m => new
+                    {
+                        Email = CleanEmailAddress(m.Email),
+                        IsChallenger = m.IsChallenger ?? false
+                    })
+                    .Where(m => !string.IsNullOrWhiteSpace(m.Email)) // Filter out invalid emails after cleaning
+                    .GroupBy(m => m.Email, StringComparer.OrdinalIgnoreCase) // Group by email to remove duplicates
+                    .Select(g => g.First()) // Take first of each duplicate group
                     .ToList();
 
                 if (!memberEmails.Any())
                 {
-                    MessageBox.Show("No members with email addresses found in Members.json.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("No members with valid email addresses found in Members.json.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
+                var emailList = string.Join("\n", memberEmails.Take(10).Select(m => $"{m.Email} ({(m.IsChallenger ? "Challenger" : "Member")}"));
                 var result = MessageBox.Show(
-                    $"This will send the email to {memberEmails.Count} member(s) from Members.json.\n\nRecipients:\n{string.Join("\n", memberEmails.Take(10))}" +
+                    $"This will send the email to {memberEmails.Count} member(s) from Members.json.\n\nRecipients:\n{emailList}" +
                     (memberEmails.Count > 10 ? $"\n... and {memberEmails.Count - 10} more" : "") +
                     "\n\nAre you sure you want to continue?",
                     "Confirm Send",
@@ -485,20 +501,21 @@ namespace NameParser.UI.ViewModels
                 int failCount = 0;
                 var errors = new List<string>();
 
-                foreach (var email in memberEmails)
+                foreach (var emailInfo in memberEmails)
                 {
                     try
                     {
-                        StatusMessage = $"Sending to {email}... ({successCount + failCount + 1}/{memberEmails.Count})";
-                        await SendEmailAsync(email, EmailSubject, EmailBody);
+                        StatusMessage = $"Sending to {emailInfo.Email}... ({successCount + failCount + 1}/{memberEmails.Count})";
+                        await SendEmailAsync(emailInfo.Email, EmailSubject, EmailBody, emailInfo.IsChallenger);
                         successCount++;
 
+                        // Delay to avoid rate limiting
                         await System.Threading.Tasks.Task.Delay(5000);
                     }
                     catch (Exception ex)
                     {
                         failCount++;
-                        errors.Add($"{email}: {ex.Message}");
+                        errors.Add($"{emailInfo.Email}: {ex.Message}");
                     }
                 }
 
@@ -525,6 +542,31 @@ namespace NameParser.UI.ViewModels
             }
         }
 
+        /// <summary>
+        /// Cleans an email address by removing trailing/leading whitespace, commas, semicolons, and other invalid characters.
+        /// </summary>
+        private string CleanEmailAddress(string email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                return null;
+
+            // Remove whitespace
+            email = email.Trim();
+
+            // Remove trailing commas, semicolons, and other common delimiters
+            email = email.TrimEnd(',', ';', ':', ' ', '\t', '\r', '\n');
+            email = email.TrimStart(',', ';', ':', ' ', '\t', '\r', '\n');
+
+            // Basic email validation - must contain @ and a domain
+            if (!email.Contains('@') || email.Length < 5)
+                return null;
+
+            // Remove any spaces within the email (invalid)
+            email = email.Replace(" ", "");
+
+            return email;
+        }
+
         private class MemberDto
         {
             public string FirstName { get; set; }
@@ -534,10 +576,13 @@ namespace NameParser.UI.ViewModels
             public bool? IsChallenger { get; set; }
         }
 
-        private async System.Threading.Tasks.Task SendEmailAsync(string toEmail, string subject, string body)
+        private async System.Threading.Tasks.Task SendEmailAsync(string toEmail, string subject, string body, bool isChallenger = false)
         {
             var message = new MimeMessage();
-            message.From.Add(new MailboxAddress("Club Administrator", _gmailAddress));
+
+            // Use different sender name based on recipient type
+            var senderName = isChallenger ? "Challenge Lucien Campeggio" : "Ser Athl (Hors-Stade)";
+            message.From.Add(new MailboxAddress(senderName, _gmailAddress));
             message.To.Add(new MailboxAddress("", toEmail));
             message.Subject = subject;
 

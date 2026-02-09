@@ -30,13 +30,1652 @@ namespace NameParser.Infrastructure.Repositories
         public PdfRaceResultRepository()
         {
             // Initialize format parsers in priority order (most specific first)
+            // Pattern-based parsers - more reliable
             _formatParsers = new List<IPdfFormatParser>
             {
-                new GrandChallengeFormatParser(),
-                new FrenchColumnFormatParser(),
-                new CrossCupFormatParser(),
-                new StandardFormatParser()
+                new ChallengeLaMeuseFormatParser(),  // Zatopek - very specific
+                new GlobalPacingFormatParser(),       // Has specific "Clas." markers
+                new GoalTimingFormatParser(),         // Has "Rank" marker
+                new OtopFormatParser(),               // CJPL races
+                new FrenchColumnFormatParser(),       // Generic French format
+                new CJPLFormatParser(),               // Another CJPL variant
+                new ChallengeCondrusienFormatParser(), // Grand Challenge variant
+                new StandardFormatParser()            // Fallback - always matches
             };
+        }
+
+            // Normalize category/token for robust matching: remove diacritics, uppercase and collapse spaces
+            private static string NormalizeCategoryToken(string input)
+            {
+                if (string.IsNullOrWhiteSpace(input))
+                    return input;
+
+                // Remove diacritics
+                var normalized = input.Normalize(System.Text.NormalizationForm.FormD);
+                var sb = new StringBuilder();
+                foreach (var ch in normalized)
+                {
+                    var uc = CharUnicodeInfo.GetUnicodeCategory(ch);
+                    if (uc != UnicodeCategory.NonSpacingMark)
+                        sb.Append(ch);
+                }
+
+                var result = sb.ToString().Normalize(System.Text.NormalizationForm.FormC).ToUpperInvariant();
+                // Collapse spaces
+                result = Regex.Replace(result, @"\s+", " ").Trim();
+                return result;
+            }
+
+        // Canonical category mapping and helpers are intentionally applied only in the specialized parsers
+
+        // ===== OTOP FORMAT PARSER =====
+        // Specific parser for Otop timing system PDFs
+        // Columns: Place | Dos. | Nom | Prénom | Sexe | Pl./S. | Catég. | Pl./C. | Temps | Vitesse | Moy. | Points | Jetons
+        private class OtopFormatParser : BasePdfFormatParser
+        {
+            private static readonly HashSet<string> _validCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Senior H", "Moins16 H", "Espoir H", "Veteran 1", "Moins16 D", "Vétéran 2", 
+                "Veteran 3", "Ainée 1", "Espoir D", "Senior D", "Ainée 3", "Vétéran 4", "Ainée 2", "Ainée 4"
+            };
+
+            private Dictionary<string, int> _columnPositions;
+            private bool _headerParsed = false;
+
+            public override bool CanParse(string pdfText, RaceMetadata metadata)
+            {
+                var lower = pdfText.ToLowerInvariant();
+
+                // STRONG indicators for Otop format (very specific)
+                bool hasStrongOtopIndicators = (lower.Contains("pl./s.") && lower.Contains("pl./c.")) ||
+                                               lower.Contains("otop timing") ||
+                                               lower.Contains("www.otop.be");
+
+                if (hasStrongOtopIndicators)
+                    return true;
+
+                // MEDIUM indicators - check for typical Otop column combination
+                bool hasMediumOtopIndicators = lower.Contains("catég.") && 
+                                              lower.Contains("prénom") &&
+                                              lower.Contains("dos") &&
+                                              lower.Contains("sexe");
+
+                if (hasMediumOtopIndicators)
+                    return true;
+
+                // Check if filename indicates CJPL (which typically uses Otop)
+                if (metadata?.Category?.Equals("CJPL", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    // Must have basic structure
+                    return lower.Contains("nom") && lower.Contains("temps");
+                }
+
+                return false;
+            }
+
+            public override string GetFormatName() => "Otop Format";
+
+            public override ParsedPdfResult ParseLine(string line, List<Member> members)
+            {
+                var result = new ParsedPdfResult();
+
+                // Extract position (required) - must be at start of line
+                var posMatch = Regex.Match(line, PositionPattern);
+                if (!posMatch.Success || !int.TryParse(posMatch.Groups[1].Value, out int position))
+                    return null;
+
+                result.Position = position;
+                var workingLine = line.Substring(posMatch.Length).Trim();
+                var nameSource = workingLine;
+
+                // Extract times first (to isolate them from name)
+                var timeMatches = Regex.Matches(workingLine, TimePattern);
+                foreach (Match tm in timeMatches)
+                {
+                    var parsed = ParseTime(tm.Value);
+                    if (parsed.HasValue)
+                    {
+                        if (!result.RaceTime.HasValue && parsed.Value.TotalMinutes > RaceTimeThresholdMinutes)
+                        {
+                            result.RaceTime = parsed.Value;
+                        }
+                        else if (!result.TimePerKm.HasValue && parsed.Value.TotalMinutes < RaceTimeThresholdMinutes)
+                        {
+                            result.TimePerKm = parsed.Value;
+                        }
+
+                        // Remove the matched time
+                        workingLine = workingLine.Replace(tm.Value, " ").Trim();
+                    }
+                }
+
+                // Extract speed if present
+                var speedMatch = Regex.Match(workingLine, SpeedPattern);
+                if (speedMatch.Success)
+                {
+                    var parsedSpeed = ParseSpeed(speedMatch.Groups[1].Value);
+                    if (parsedSpeed.HasValue)
+                    {
+                        result.Speed = parsedSpeed.Value;
+                        workingLine = workingLine.Replace(speedMatch.Value, " ").Trim();
+                    }
+                }
+
+                // Extract team from parentheses/brackets if present
+                var teamMatch = Regex.Match(workingLine, @"\((.*?)\)|\[(.*?)\]");
+                if (teamMatch.Success)
+                {
+                    result.Team = !string.IsNullOrEmpty(teamMatch.Groups[1].Value)
+                        ? teamMatch.Groups[1].Value
+                        : teamMatch.Groups[2].Value;
+                    workingLine = workingLine.Replace(teamMatch.Value, " ").Trim();
+                }
+
+                // Try to extract category info from remaining text
+                ExtractCategoryFromText(workingLine, result);
+
+                // Set full name from the REMAINING text after extractions
+                result.FullName = CleanExtractedName(workingLine);
+
+                if (string.IsNullOrWhiteSpace(result.FullName))
+                {
+                    // fallback to name source cleaned
+                    result.FullName = CleanExtractedName(nameSource);
+                }
+
+                // Final fallback
+                if (string.IsNullOrWhiteSpace(result.FullName))
+                    result.FullName = nameSource;
+
+                // Match member
+                var matchedMember = FindMatchingMember(members, result.FullName);
+                if (matchedMember != null)
+                {
+                    result.FirstName = matchedMember.FirstName;
+                    result.LastName = matchedMember.LastName;
+                    result.IsMember = true;
+                }
+                else
+                {
+                    var nameParts = ExtractNameParts(result.FullName);
+                    result.FirstName = nameParts.firstName;
+                    result.LastName = nameParts.lastName;
+                    result.IsMember = false;
+                }
+
+                // Validate that we have valid names (not just numbers)
+                if (!IsValidName(result.FirstName) || !IsValidName(result.LastName))
+                {
+                    System.Diagnostics.Debug.WriteLine($"Otop: Rejected result with invalid name - FirstName: '{result.FirstName}', LastName: '{result.LastName}' at position {result.Position}");
+                    return null;
+                }
+
+                return result.Position.HasValue && !string.IsNullOrWhiteSpace(result.FullName) ? result : null;
+            }
+
+            private bool IsHeaderRow(string line)
+            {
+                var lower = line.ToLowerInvariant();
+                // More lenient: just need place/pl and nom (name)
+                return (lower.Contains("place") || lower.Contains(" pl.") || lower.Contains(" pl ")) && 
+                       lower.Contains("nom");
+            }
+
+            private Dictionary<string, int> DetectColumnPositions(string headerLine)
+            {
+                var positions = new Dictionary<string, int>();
+                var lowerHeader = headerLine.ToLowerInvariant();
+
+                var columnMappings = new Dictionary<string, string[]>
+                {
+                    { "position", new[] { "place", "pl.", "pl " } },
+                    { "bib", new[] { "dos.", "dos", "dossard" } },
+                    { "lastname", new[] { " nom", "nom " } },  // Space before/after to avoid matching in other words
+                    { "firstname", new[] { "prénom", "prenom" } },
+                    { "sex", new[] { "sexe" } },
+                    { "positionsex", new[] { "pl./s.", "pl. s", "pl.s", "pl/s", "pl s" } },
+                    { "category", new[] { "catég.", "categ.", "catégorie", " cat " } },
+                    { "positioncat", new[] { "pl./c.", "pl. c", "pl.c", "pl/c", "pl c" } },
+                    { "time", new[] { "temps" } },
+                    { "speed", new[] { "vitesse", "km/h" } },
+                    { "pace", new[] { "moy.", "moy", "min/km", "allure" } },
+                    { "points", new[] { "points" } },
+                    { "jetons", new[] { "jetons" } }
+                };
+
+                foreach (var mapping in columnMappings)
+                {
+                    foreach (var keyword in mapping.Value)
+                    {
+                        var index = lowerHeader.IndexOf(keyword);
+                        if (index >= 0)
+                        {
+                            // For better matching, check boundaries only for short keywords
+                            bool validMatch = true;
+                            if (keyword.Length <= 4 && index > 0)
+                            {
+                                // Check if previous character is a letter (word boundary check)
+                                var prevChar = lowerHeader[index - 1];
+                                if (char.IsLetter(prevChar))
+                                {
+                                    validMatch = false;
+                                }
+                            }
+
+                            if (validMatch && !positions.ContainsKey(mapping.Key))
+                            {
+                                positions[mapping.Key] = index;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                System.Diagnostics.Debug.WriteLine($"Otop: Detected {positions.Count} columns");
+                foreach (var pos in positions.OrderBy(p => p.Value))
+                {
+                    System.Diagnostics.Debug.WriteLine($"  {pos.Key}: {pos.Value}");
+                }
+
+                return positions;
+            }
+
+            private ParsedPdfResult ParseLineUsingColumns(string line, List<Member> members)
+            {
+                var result = new ParsedPdfResult();
+
+                try
+                {
+                    // Extract position (required)
+                    if (_columnPositions.ContainsKey("position"))
+                    {
+                        var posText = ExtractColumnValue(line, "position");
+                        if (!string.IsNullOrWhiteSpace(posText) && int.TryParse(posText.TrimEnd('.', ','), out int position))
+                            result.Position = position;
+                        else
+                            return null;
+                    }
+
+                    // Extract last name (required)
+                    string lastName = null;
+                    if (_columnPositions.ContainsKey("lastname"))
+                    {
+                        lastName = ExtractColumnValue(line, "lastname");
+                    }
+
+                    // Extract first name (required)
+                    string firstName = null;
+                    if (_columnPositions.ContainsKey("firstname"))
+                    {
+                        firstName = ExtractColumnValue(line, "firstname");
+                    }
+
+                    // Combine names - be lenient, accept even if one is missing
+                    if (!string.IsNullOrEmpty(firstName) && !string.IsNullOrEmpty(lastName))
+                    {
+                        result.FullName = $"{firstName} {lastName}";
+                        result.FirstName = firstName;
+                        result.LastName = lastName;
+                    }
+                    else if (!string.IsNullOrEmpty(firstName))
+                    {
+                        result.FullName = firstName;
+                        result.FirstName = firstName;
+                        result.LastName = firstName;
+                    }
+                    else if (!string.IsNullOrEmpty(lastName))
+                    {
+                        result.FullName = lastName;
+                        result.FirstName = lastName;
+                        result.LastName = lastName;
+                    }
+                    else
+                    {
+                        // No name found
+                        return null;
+                    }
+
+                    // Extract sex
+                    if (_columnPositions.ContainsKey("sex"))
+                    {
+                        var sexText = ExtractColumnValue(line, "sex")?.Trim().ToUpperInvariant();
+                        if (!string.IsNullOrEmpty(sexText))
+                        {
+                            if (sexText == "M" || sexText == "H")
+                                result.Sex = "M";
+                            else if (sexText == "F" || sexText == "D")
+                                result.Sex = "F";
+                        }
+                    }
+
+                    // Extract position by sex
+                    if (_columnPositions.ContainsKey("positionsex"))
+                    {
+                        var posSexText = ExtractColumnValue(line, "positionsex");
+                        if (int.TryParse(posSexText, out int posSex))
+                            result.PositionBySex = posSex;
+                    }
+
+                    // Extract category
+                    if (_columnPositions.ContainsKey("category"))
+                    {
+                        var catText = ExtractColumnValue(line, "category")?.Trim();
+                        if (!string.IsNullOrWhiteSpace(catText))
+                        {
+                            // Accept category as-is (valid categories list is for reference only)
+                            result.AgeCategory = catText;
+                        }
+                    }
+
+                    // Extract position by category
+                    if (_columnPositions.ContainsKey("positioncat"))
+                    {
+                        var posCatText = ExtractColumnValue(line, "positioncat");
+                        if (int.TryParse(posCatText, out int posCat))
+                            result.PositionByCategory = posCat;
+                    }
+
+                    // Extract race time
+                    if (_columnPositions.ContainsKey("time"))
+                    {
+                        var timeText = ExtractColumnValue(line, "time");
+                        var parsedTime = ParseTime(timeText);
+                        if (parsedTime.HasValue)
+                        {
+                            // Accept any time - filter later if needed
+                            if (parsedTime.Value.TotalMinutes > RaceTimeThresholdMinutes)
+                                result.RaceTime = parsedTime.Value;
+                            else if (parsedTime.Value.TotalMinutes > 0)
+                                result.TimePerKm = parsedTime.Value; // Might be pace
+                        }
+                    }
+
+                    // Extract speed
+                    if (_columnPositions.ContainsKey("speed"))
+                    {
+                        var speedText = ExtractColumnValue(line, "speed");
+                        var parsedSpeed = ParseSpeed(speedText);
+                        if (parsedSpeed.HasValue)
+                            result.Speed = parsedSpeed.Value;
+                    }
+
+                    // Extract pace (Moy. = min/km)
+                    if (_columnPositions.ContainsKey("pace"))
+                    {
+                        var paceText = ExtractColumnValue(line, "pace");
+                        var parsedPace = ParseTime(paceText);
+                        if (parsedPace.HasValue && parsedPace.Value.TotalMinutes < RaceTimeThresholdMinutes)
+                            result.TimePerKm = parsedPace.Value;
+                    }
+
+                    // Match member
+                    var matchedMember = FindMatchingMember(members, result.FullName);
+                    if (matchedMember != null)
+                    {
+                        result.FirstName = matchedMember.FirstName;
+                        result.LastName = matchedMember.LastName;
+                        result.IsMember = true;
+                    }
+                    else
+                    {
+                        result.IsMember = false;
+                    }
+
+                    return result.Position.HasValue && !string.IsNullOrWhiteSpace(result.FullName) ? result : null;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Otop parser error: {ex.Message}");
+                    return null;
+                }
+            }
+
+            private string ExtractColumnValue(string line, string columnKey)
+            {
+                if (!_columnPositions.ContainsKey(columnKey))
+                    return null;
+
+                var startPos = _columnPositions[columnKey];
+                var endPos = GetNextColumnPosition(startPos);
+
+                if (startPos >= line.Length)
+                    return string.Empty;
+
+                if (endPos == int.MaxValue || endPos > line.Length)
+                    return line.Substring(startPos).Trim();
+                else
+                {
+                    var length = Math.Min(endPos - startPos, line.Length - startPos);
+                    return line.Substring(startPos, length).Trim();
+                }
+            }
+
+            private int GetNextColumnPosition(int currentPosition)
+            {
+                var nextPositions = _columnPositions.Values.Where(p => p > currentPosition).OrderBy(p => p);
+                return nextPositions.Any() ? nextPositions.First() : int.MaxValue;
+            }
+        }
+
+        // ===== GLOBAL PACING FORMAT PARSER =====
+        // Specific parser for Global Pacing timing system PDFs
+        // Columns: Pl. | Dos | Nom | Sexe | Clas.Sexe | Cat | Clas.Cat | Club | Vitesse | min/km | Temps | Points
+        private class GlobalPacingFormatParser : BasePdfFormatParser
+        {
+            private static readonly HashSet<string> _validCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Sen", "Hom", "V1", "V2", "Dam", "Esp G", "Esp F", "V3", "A2", "A1", "A3", "V4"
+            };
+
+            private Dictionary<string, int> _columnPositions;
+            private bool _headerParsed = false;
+
+            public override bool CanParse(string pdfText, RaceMetadata metadata)
+            {
+                var lower = pdfText.ToLowerInvariant();
+
+                // STRONG indicators for Global Pacing format
+                bool hasStrongIndicators = lower.Contains("global pacing") ||
+                                          lower.Contains("globalpacing") ||
+                                          lower.Contains("www.globalpacing");
+
+                if (hasStrongIndicators)
+                    return true;
+
+                // MEDIUM indicators - typical Global Pacing column combination
+                // GlobalPacing uses "Clas.Sexe" and "Clas.Cat" which are very specific
+                bool hasMediumIndicators = (lower.Contains("clas.sexe") && lower.Contains("clas.cat")) ||
+                                          (lower.Contains("clas.sexe") && lower.Contains("pl.")) ||
+                                          (lower.Contains("clas.cat") && lower.Contains("pl."));
+
+                if (hasMediumIndicators)
+                    return true;
+
+                // Check filename pattern for Global Pacing (Classement-XXkm-RaceName)
+                var fileName = metadata?.RaceName?.ToLowerInvariant() ?? "";
+                if (fileName.StartsWith("classement") && fileName.Contains("km"))
+                {
+                    // GlobalPacing often uses this pattern
+                    return lower.Contains("pl.") && lower.Contains("nom");
+                }
+
+                return false;
+            }
+
+            public override string GetFormatName() => "Global Pacing Format";
+
+            public override ParsedPdfResult ParseLine(string line, List<Member> members)
+            {
+                var result = new ParsedPdfResult();
+
+                // Extract position (required)
+                var posMatch = Regex.Match(line, PositionPattern);
+                if (!posMatch.Success || !int.TryParse(posMatch.Groups[1].Value, out int position))
+                    return null;
+
+                result.Position = position;
+                var workingLine = line.Substring(posMatch.Length).Trim();
+                var nameSource = workingLine;
+
+                // Global Pacing format check: "LASTNAME, Firstname" - handle BEFORE any cleaning
+                // Look for comma pattern early to preserve the name format
+                bool isCommaFormat = workingLine.Contains(",");
+                string rawFirstName = null;
+                string rawLastName = null;
+
+                if (isCommaFormat)
+                {
+                    // Try to extract comma-separated name before removing times/speeds
+                    var commaIndex = workingLine.IndexOf(',');
+                    if (commaIndex > 0)
+                    {
+                        // Extract everything before comma as last name (may include bib number)
+                        var beforeComma = workingLine.Substring(0, commaIndex).Trim();
+
+                        // Remove leading bib number if present (1-4 digits at start)
+                        var bibPattern = @"^\d{1,4}\s+";
+                        beforeComma = Regex.Replace(beforeComma, bibPattern, "").Trim();
+
+                        rawLastName = beforeComma;
+
+                        // Look for the end of the first name (after comma, before next field)
+                        var afterComma = workingLine.Substring(commaIndex + 1).TrimStart();
+
+                        // Find where name ends - stop at:
+                        // - Time pattern (HH:MM:SS or MM:SS)
+                        // - Number (likely position, bib, or other field)
+                        // - Two or more spaces (column separator)
+                        var nameEndMatch = Regex.Match(afterComma, @"^([A-Za-zÀ-ÿ\s\-']+?)(?=\s{2,}|\d{1,2}:\d{2}|\s+\d+\s+|$)");
+                        if (nameEndMatch.Success)
+                        {
+                            rawFirstName = nameEndMatch.Groups[1].Value.Trim();
+                        }
+                        else
+                        {
+                            // Fallback: take everything up to first digit or time
+                            var fallbackMatch = Regex.Match(afterComma, @"^([A-Za-zÀ-ÿ\s\-']+)");
+                            if (fallbackMatch.Success)
+                            {
+                                rawFirstName = fallbackMatch.Groups[1].Value.Trim();
+                            }
+                        }
+
+                        System.Diagnostics.Debug.WriteLine($"GlobalPacing comma format detected - LastName: '{rawLastName}', FirstName: '{rawFirstName}'");
+                    }
+                }
+
+                // Extract times first
+                var timeMatches = Regex.Matches(workingLine, TimePattern);
+                foreach (Match tm in timeMatches)
+                {
+                    var parsed = ParseTime(tm.Value);
+                    if (parsed.HasValue)
+                    {
+                        if (!result.RaceTime.HasValue && parsed.Value.TotalMinutes > RaceTimeThresholdMinutes)
+                        {
+                            result.RaceTime = parsed.Value;
+                        }
+                        else if (!result.TimePerKm.HasValue && parsed.Value.TotalMinutes < RaceTimeThresholdMinutes)
+                        {
+                            result.TimePerKm = parsed.Value;
+                        }
+
+                        workingLine = workingLine.Replace(tm.Value, " ").Trim();
+                    }
+                }
+
+                // Extract speed
+                var speedMatch = Regex.Match(workingLine, SpeedPattern);
+                if (speedMatch.Success)
+                {
+                    var parsedSpeed = ParseSpeed(speedMatch.Groups[1].Value);
+                    if (parsedSpeed.HasValue)
+                    {
+                        result.Speed = parsedSpeed.Value;
+                        workingLine = workingLine.Replace(speedMatch.Value, " ").Trim();
+                    }
+                }
+
+                // Extract team from parentheses/brackets
+                var teamMatch = Regex.Match(workingLine, @"\((.*?)\)|\[(.*?)\]");
+                if (teamMatch.Success)
+                {
+                    result.Team = !string.IsNullOrEmpty(teamMatch.Groups[1].Value)
+                        ? teamMatch.Groups[1].Value
+                        : teamMatch.Groups[2].Value;
+                    workingLine = workingLine.Replace(teamMatch.Value, " ").Trim();
+                }
+
+                // Try to extract explicit club/team tokens
+                if (string.IsNullOrWhiteSpace(result.Team))
+                {
+                    var clubRegex = new Regex(@"\b(?:club|équipe|equipe|team)[:\s\-]*([A-Za-zÀ-ÿ0-9\-\&\s]{2,60})", RegexOptions.IgnoreCase);
+                    var clubMatch = clubRegex.Match(workingLine);
+                    if (clubMatch.Success)
+                    {
+                        var teamText = clubMatch.Groups[1].Value.Trim().TrimEnd('.', ',', ';', ':');
+                        if (!string.IsNullOrWhiteSpace(teamText))
+                        {
+                            result.Team = teamText;
+                            workingLine = workingLine.Replace(clubMatch.Value, " ").Trim();
+                        }
+                    }
+                }
+
+                // Extract category info - GlobalPacing specific pattern handling
+                // Handle patterns like "Dam 8", "Hom 7", "A2 7" where category and position are adjacent
+                var categoryPositionPattern = @"\b(HOM|DAM|SEN|V[1-4]|A[1-3]|D[1-3]|ESP[HFGD]?|ES[HFGD])\s+(\d{1,3})\b";
+                var categoryMatch = Regex.Match(workingLine, categoryPositionPattern, RegexOptions.IgnoreCase);
+
+                if (categoryMatch.Success && result.AgeCategory == null)
+                {
+                    result.AgeCategory = categoryMatch.Groups[1].Value.ToUpperInvariant();
+                    if (int.TryParse(categoryMatch.Groups[2].Value, out int catPos))
+                    {
+                        result.PositionByCategory = catPos;
+                    }
+                    // Remove the matched pattern from working line
+                    workingLine = workingLine.Replace(categoryMatch.Value, " ").Trim();
+
+                    System.Diagnostics.Debug.WriteLine($"GlobalPacing: Extracted category '{result.AgeCategory}' with position {result.PositionByCategory} from pattern");
+                }
+
+                // Standard category extraction as fallback
+                ExtractCategoryFromText(workingLine, result);
+
+                // Set full name - use raw extracted names if we found comma format
+                if (!string.IsNullOrWhiteSpace(rawFirstName) && !string.IsNullOrWhiteSpace(rawLastName))
+                {
+                    // Validate that names are not just numbers
+                    bool firstNameIsNumber = rawFirstName.All(c => char.IsDigit(c) || char.IsWhiteSpace(c));
+                    bool lastNameIsNumber = rawLastName.All(c => char.IsDigit(c) || char.IsWhiteSpace(c));
+
+                    if (!firstNameIsNumber && !lastNameIsNumber)
+                    {
+                        result.FirstName = rawFirstName;
+                        result.LastName = rawLastName;
+                        result.FullName = $"{rawFirstName} {rawLastName}";
+                        result.IsMember = false;
+
+                        // Try to match member
+                        var matchedMember = FindMatchingMember(members, result.FullName);
+                        if (matchedMember != null)
+                        {
+                            result.FirstName = matchedMember.FirstName;
+                            result.LastName = matchedMember.LastName;
+                            result.IsMember = true;
+                        }
+
+                        return result.Position.HasValue && !string.IsNullOrWhiteSpace(result.FullName) ? result : null;
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"GlobalPacing: Rejected numeric name - FirstName: '{rawFirstName}', LastName: '{rawLastName}'");
+                    }
+                }
+
+                // Fallback: Standard name extraction if comma format wasn't found
+                result.FullName = CleanExtractedName(workingLine);
+
+                if (string.IsNullOrWhiteSpace(result.FullName))
+                {
+                    result.FullName = CleanExtractedName(nameSource);
+                }
+
+                if (string.IsNullOrWhiteSpace(result.FullName))
+                    result.FullName = nameSource;
+
+                // Check for comma in cleaned name as last resort
+                if (result.FullName.Contains(","))
+                {
+                    var commaParts = result.FullName.Split(new[] { ',' }, 2);
+                    if (commaParts.Length == 2)
+                    {
+                        result.LastName = commaParts[0].Trim();
+                        result.FirstName = commaParts[1].Trim();
+                        result.FullName = $"{result.FirstName} {result.LastName}";
+                    }
+                }
+
+                // Standard name processing
+                var member = FindMatchingMember(members, result.FullName);
+                if (member != null)
+                {
+                    result.FirstName = member.FirstName;
+                    result.LastName = member.LastName;
+                    result.IsMember = true;
+                }
+                else
+                {
+                    // Only extract name parts if we don't already have them
+                    if (string.IsNullOrWhiteSpace(result.FirstName) || string.IsNullOrWhiteSpace(result.LastName))
+                    {
+                        var nameParts = ExtractNameParts(result.FullName);
+                        result.FirstName = nameParts.firstName;
+                        result.LastName = nameParts.lastName;
+                    }
+                    result.IsMember = false;
+                }
+
+                // Final validation: reject if firstName or lastName are just numbers
+                if (!string.IsNullOrWhiteSpace(result.FirstName) && result.FirstName.All(c => char.IsDigit(c) || char.IsWhiteSpace(c)))
+                {
+                    System.Diagnostics.Debug.WriteLine($"GlobalPacing: Rejected result with numeric FirstName: '{result.FirstName}' at position {result.Position}");
+                    return null;
+                }
+                if (!string.IsNullOrWhiteSpace(result.LastName) && result.LastName.All(c => char.IsDigit(c) || char.IsWhiteSpace(c)))
+                {
+                    System.Diagnostics.Debug.WriteLine($"GlobalPacing: Rejected result with numeric LastName: '{result.LastName}' at position {result.Position}");
+                    return null;
+                }
+
+                return result.Position.HasValue && !string.IsNullOrWhiteSpace(result.FullName) ? result : null;
+            }
+
+            private bool IsHeaderRow(string line)
+            {
+                var lower = line.ToLowerInvariant();
+                return (lower.Contains("pl.") && lower.Contains("nom")) || 
+                       (lower.Contains("clas.sexe") && lower.Contains("clas.cat"));
+            }
+
+            private Dictionary<string, int> DetectColumnPositions(string headerLine)
+            {
+                var positions = new Dictionary<string, int>();
+                var lowerHeader = headerLine.ToLowerInvariant();
+
+                var columnMappings = new Dictionary<string, string[]>
+                {
+                    { "position", new[] { "pl.", "pl ", "place" } },
+                    { "bib", new[] { "dos", "dossard" } },
+                    { "name", new[] { " nom", "nom " } },
+                    { "sex", new[] { "sexe" } },
+                    { "positionsex", new[] { "clas.sexe", "clas. sexe", "cl.sexe", "clas sexe" } },
+                    { "category", new[] { " cat", "catégorie" } },
+                    { "positioncat", new[] { "clas.cat", "clas. cat", "cl.cat", "clas cat" } },
+                    { "team", new[] { "club", "équipe" } },
+                    { "speed", new[] { "vitesse" } },
+                    { "pace", new[] { "min/km", "allure" } },
+                    { "time", new[] { "temps" } },
+                    { "points", new[] { "points" } }
+                };
+
+                foreach (var mapping in columnMappings)
+                {
+                    foreach (var keyword in mapping.Value)
+                    {
+                        var index = lowerHeader.IndexOf(keyword);
+                        if (index >= 0)
+                        {
+                            // For better matching with short keywords
+                            bool validMatch = true;
+                            if (keyword.Length <= 4 && index > 0)
+                            {
+                                var prevChar = lowerHeader[index - 1];
+                                if (char.IsLetter(prevChar))
+                                {
+                                    validMatch = false;
+                                }
+                            }
+
+                            if (validMatch && !positions.ContainsKey(mapping.Key))
+                            {
+                                positions[mapping.Key] = index;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                System.Diagnostics.Debug.WriteLine($"GlobalPacing: Detected {positions.Count} columns");
+                foreach (var pos in positions.OrderBy(p => p.Value))
+                {
+                    System.Diagnostics.Debug.WriteLine($"  {pos.Key}: {pos.Value}");
+                }
+
+                return positions;
+            }
+
+            private ParsedPdfResult ParseLineUsingColumns(string line, List<Member> members)
+            {
+                var result = new ParsedPdfResult();
+
+                try
+                {
+                    // Extract position (required)
+                    if (_columnPositions.ContainsKey("position"))
+                    {
+                        var posText = ExtractColumnValue(line, "position");
+                        if (!string.IsNullOrWhiteSpace(posText) && int.TryParse(posText.TrimEnd('.', ','), out int position))
+                            result.Position = position;
+                        else
+                            return null;
+                    }
+
+                    // Extract name (required) - Format: "LASTNAME, Firstname"
+                    if (_columnPositions.ContainsKey("name"))
+                    {
+                        var nameText = ExtractColumnValue(line, "name");
+                        if (string.IsNullOrWhiteSpace(nameText))
+                            return null;
+
+                        result.FullName = nameText;
+
+                        // Parse "LASTNAME, Firstname" format
+                        if (nameText.Contains(","))
+                        {
+                            var commaIndex = nameText.IndexOf(',');
+                            result.LastName = nameText.Substring(0, commaIndex).Trim();
+
+                            // Extract first name - everything after comma up to next delimiter
+                            var afterComma = nameText.Substring(commaIndex + 1).TrimStart();
+
+                            // Remove any trailing numbers/fields that might have leaked in
+                            var firstNameMatch = Regex.Match(afterComma, @"^([A-Za-zÀ-ÿ\s\-']+)");
+                            if (firstNameMatch.Success)
+                            {
+                                result.FirstName = firstNameMatch.Groups[1].Value.Trim();
+                            }
+                            else
+                            {
+                                result.FirstName = afterComma.Trim();
+                            }
+
+                            // Update FullName to be "FirstName LastName" format
+                            result.FullName = $"{result.FirstName} {result.LastName}";
+
+                            System.Diagnostics.Debug.WriteLine($"GlobalPacing (columns) parsed name - LastName: '{result.LastName}', FirstName: '{result.FirstName}'");
+                        }
+                        else
+                        {
+                            // Fallback: use name parts extraction
+                            var nameParts = ExtractNameParts(nameText);
+                            result.FirstName = nameParts.firstName;
+                            result.LastName = nameParts.lastName;
+                        }
+                    }
+                    else
+                    {
+                        return null;
+                    }
+
+                    // Extract sex
+                    if (_columnPositions.ContainsKey("sex"))
+                    {
+                        var sexText = ExtractColumnValue(line, "sex")?.Trim().ToUpperInvariant();
+                        if (!string.IsNullOrEmpty(sexText))
+                        {
+                            if (sexText == "M" || sexText == "H")
+                                result.Sex = "M";
+                            else if (sexText == "F" || sexText == "D")
+                                result.Sex = "F";
+                        }
+                    }
+
+                    // Extract position by sex
+                    if (_columnPositions.ContainsKey("positionsex"))
+                    {
+                        var posSexText = ExtractColumnValue(line, "positionsex");
+                        if (int.TryParse(posSexText, out int posSex))
+                            result.PositionBySex = posSex;
+                    }
+
+                    // Extract category
+                    if (_columnPositions.ContainsKey("category"))
+                    {
+                        var catText = ExtractColumnValue(line, "category")?.Trim();
+                        if (!string.IsNullOrWhiteSpace(catText))
+                        {
+                            // Accept category as-is (valid categories list is for reference only)
+                            result.AgeCategory = catText;
+                        }
+                    }
+
+                    // Extract position by category
+                    if (_columnPositions.ContainsKey("positioncat"))
+                    {
+                        var posCatText = ExtractColumnValue(line, "positioncat");
+                        if (int.TryParse(posCatText, out int posCat))
+                            result.PositionByCategory = posCat;
+                    }
+
+                    // Extract team
+                    if (_columnPositions.ContainsKey("team"))
+                    {
+                        result.Team = ExtractColumnValue(line, "team");
+                    }
+
+                    // Extract race time
+                    if (_columnPositions.ContainsKey("time"))
+                    {
+                        var timeText = ExtractColumnValue(line, "time");
+                        var parsedTime = ParseTime(timeText);
+                        if (parsedTime.HasValue)
+                        {
+                            // Accept any time - filter later if needed
+                            if (parsedTime.Value.TotalMinutes > RaceTimeThresholdMinutes)
+                                result.RaceTime = parsedTime.Value;
+                            else if (parsedTime.Value.TotalMinutes > 0)
+                                result.TimePerKm = parsedTime.Value; // Might be pace
+                        }
+                    }
+
+                    // Extract speed
+                    if (_columnPositions.ContainsKey("speed"))
+                    {
+                        var speedText = ExtractColumnValue(line, "speed");
+                        var parsedSpeed = ParseSpeed(speedText);
+                        if (parsedSpeed.HasValue)
+                            result.Speed = parsedSpeed.Value;
+                    }
+
+                    // Extract pace (min/km)
+                    if (_columnPositions.ContainsKey("pace"))
+                    {
+                        var paceText = ExtractColumnValue(line, "pace");
+                        var parsedPace = ParseTime(paceText);
+                        if (parsedPace.HasValue && parsedPace.Value.TotalMinutes < RaceTimeThresholdMinutes)
+                            result.TimePerKm = parsedPace.Value;
+                    }
+
+                    // Match member
+                    var matchedMember = FindMatchingMember(members, result.FullName);
+                    if (matchedMember != null)
+                    {
+                        result.FirstName = matchedMember.FirstName;
+                        result.LastName = matchedMember.LastName;
+                        result.IsMember = true;
+                    }
+                    else
+                    {
+                        result.IsMember = false;
+                    }
+
+                    // Final validation: reject if firstName or lastName are just numbers
+                    if (!string.IsNullOrWhiteSpace(result.FirstName) && result.FirstName.All(c => char.IsDigit(c) || char.IsWhiteSpace(c)))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"GlobalPacing (columns): Rejected result with numeric FirstName: '{result.FirstName}' at position {result.Position}");
+                        return null;
+                    }
+                    if (!string.IsNullOrWhiteSpace(result.LastName) && result.LastName.All(c => char.IsDigit(c) || char.IsWhiteSpace(c)))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"GlobalPacing (columns): Rejected result with numeric LastName: '{result.LastName}' at position {result.Position}");
+                        return null;
+                    }
+
+                    return result.Position.HasValue && !string.IsNullOrWhiteSpace(result.FullName) ? result : null;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"GlobalPacing parser error: {ex.Message}");
+                    return null;
+                }
+            }
+
+            private string ExtractColumnValue(string line, string columnKey)
+            {
+                if (!_columnPositions.ContainsKey(columnKey))
+                    return null;
+
+                var startPos = _columnPositions[columnKey];
+                var endPos = GetNextColumnPosition(startPos);
+
+                if (startPos >= line.Length)
+                    return string.Empty;
+
+                if (endPos == int.MaxValue || endPos > line.Length)
+                    return line.Substring(startPos).Trim();
+                else
+                {
+                    var length = Math.Min(endPos - startPos, line.Length - startPos);
+                    return line.Substring(startPos, length).Trim();
+                }
+            }
+
+            private int GetNextColumnPosition(int currentPosition)
+            {
+                var nextPositions = _columnPositions.Values.Where(p => p > currentPosition).OrderBy(p => p);
+                return nextPositions.Any() ? nextPositions.First() : int.MaxValue;
+            }
+        }
+
+        // ===== CHALLENGE LA MEUSE FORMAT PARSER =====
+        // Specific parser for "Challenge La Meuse" PDFs (e.g., "La Zatopek en Famille")
+        // Columns: Pos. | Nom | Dos. | Temps | Vitesse | Allure | Club | Catégorie | P.Ca | D.Cha
+        private class ChallengeLaMeuseFormatParser : BasePdfFormatParser
+        {
+            // Canonical category mapping (normalized -> canonical exact label) used ONLY by this parser
+            private static readonly Dictionary<string, string> _canonicalCategories = CreateCanonicalCategoryMap();
+
+            private static Dictionary<string, string> CreateCanonicalCategoryMap()
+            {
+                var list = new[]
+                {
+                    "Séniors",
+                    "Vétérans 1",
+                    "Espoirs Garçons",
+                    "Vétérans 2",
+                    "Espoirs Filles",
+                    "Ainées 2",
+                    "Vétérans 3",
+                    "Dames",
+                    "Ainées 1",
+                    "Ainées 3",
+                    "Vétérans 4",
+                    "Ainées 4"
+                };
+
+                var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var c in list)
+                {
+                    var norm = NormalizeCategoryToken(c);
+                    if (!dict.ContainsKey(norm))
+                        dict[norm] = c;
+                }
+
+                return dict;
+            }
+
+            private static string MapToCanonicalCategoryLocal(string token)
+            {
+                if (string.IsNullOrWhiteSpace(token)) return null;
+                var norm = NormalizeCategoryToken(token);
+                if (_canonicalCategories.TryGetValue(norm, out var canon))
+                    return canon;
+                return null;
+            }
+
+            private static void ResolveCanonicalCategoryFromLineLocal(string line, ParsedPdfResult result)
+            {
+                if (string.IsNullOrWhiteSpace(line) || result == null)
+                    return;
+
+                // Try to find any canonical label in the normalized line and set exact label
+                var normalizedLine = NormalizeCategoryToken(line);
+                foreach (var kv in _canonicalCategories)
+                {
+                    var canonNorm = kv.Key;
+                    var pattern = $"\\b{Regex.Escape(canonNorm)}\\b\\s*(\\d{{1,3}})?";
+                    var match = Regex.Match(normalizedLine, pattern, RegexOptions.IgnoreCase);
+                    if (match.Success)
+                    {
+                        result.AgeCategory = kv.Value; // exact canonical label
+                        if (match.Groups.Count > 1 && !string.IsNullOrWhiteSpace(match.Groups[1].Value))
+                        {
+                            if (int.TryParse(match.Groups[1].Value, out int posCat2))
+                                result.PositionByCategory = posCat2;
+                        }
+                        return;
+                    }
+                }
+            }
+            public override bool CanParse(string pdfText, RaceMetadata metadata)
+            {
+                var lower = pdfText.ToLowerInvariant();
+                var fileName = metadata?.RaceName?.ToLowerInvariant() ?? string.Empty;
+
+                // Detect by presence of Zatopek keyword or typical abbreviated header labels
+                bool hasZatopekKeyword = lower.Contains("zatopek") || fileName.Contains("zatopek");
+                bool hasPCaHeader = lower.Contains("p.ca") || lower.Contains("p ca");
+
+                if (!hasZatopekKeyword && !hasPCaHeader)
+                    return false;
+
+                // Verify minimum required columns are present
+                var requiredColumns = new[] { "pos", "nom", "temps", "catégorie" };
+                int foundColumns = requiredColumns.Count(col => lower.Contains(col));
+
+                return foundColumns >= 3; // At least 3 out of 4 required columns
+            }
+
+            public override string GetFormatName() => "Zatopek Format";
+
+            public override ParsedPdfResult ParseLine(string line, List<Member> members)
+            {
+                var result = new ParsedPdfResult();
+
+                // Position at start required
+                var posMatch = Regex.Match(line, PositionPattern);
+                if (!posMatch.Success || !int.TryParse(posMatch.Groups[1].Value, out int position))
+                    return null;
+
+                result.Position = position;
+                var workingLine = line.Substring(posMatch.Length).Trim();
+                var nameSource = workingLine;
+
+                // Extract times first
+                var timeMatches = Regex.Matches(workingLine, TimePattern);
+                foreach (Match tm in timeMatches)
+                {
+                    var parsed = ParseTime(tm.Value);
+                    if (parsed.HasValue)
+                    {
+                        if (!result.RaceTime.HasValue && parsed.Value.TotalMinutes > RaceTimeThresholdMinutes)
+                        {
+                            result.RaceTime = parsed.Value;
+                        }
+                        else if (!result.TimePerKm.HasValue && parsed.Value.TotalMinutes < RaceTimeThresholdMinutes)
+                        {
+                            result.TimePerKm = parsed.Value;
+                        }
+
+                        // Remove the matched time to simplify remaining parsing
+                        workingLine = workingLine.Replace(tm.Value, " ").Trim();
+                    }
+                }
+                // Extract speed if present
+                var speedMatch = Regex.Match(workingLine, SpeedPattern);
+                if (speedMatch.Success)
+                {
+                    var parsedSpeed = ParseSpeed(speedMatch.Groups[1].Value);
+                    if (parsedSpeed.HasValue)
+                    {
+                        result.Speed = parsedSpeed.Value;
+                        workingLine = workingLine.Replace(speedMatch.Value, " ").Trim();
+                    }
+                }
+
+                // Extract team from parentheses/brackets if present
+                var teamMatch = Regex.Match(workingLine, @"\((.*?)\)|\[(.*?)\]");
+                if (teamMatch.Success)
+                {
+                    result.Team = !string.IsNullOrEmpty(teamMatch.Groups[1].Value)
+                        ? teamMatch.Groups[1].Value
+                        : teamMatch.Groups[2].Value;
+                    workingLine = workingLine.Replace(teamMatch.Value, " ").Trim();
+                }
+
+                // Try to extract explicit club/team tokens (e.g. "Club: XYZ", "Equipe - ABC", "Team: ABC")
+                if (string.IsNullOrWhiteSpace(result.Team))
+                {
+                    var clubRegex = new Regex(@"\b(?:club|équipe|equipe|team|soci[eé]t[eé])[:\s\-]*([A-Za-zÀ-ÿ0-9\-\&\s]{2,60})", RegexOptions.IgnoreCase);
+                    var clubMatch = clubRegex.Match(workingLine);
+                    if (clubMatch.Success)
+                    {
+                        var teamText = clubMatch.Groups[1].Value.Trim().TrimEnd('.', ',', ';', ':');
+                        if (!string.IsNullOrWhiteSpace(teamText))
+                        {
+                            result.Team = teamText;
+                            workingLine = workingLine.Replace(clubMatch.Value, " ").Trim();
+                        }
+                    }
+                }
+
+                // Fallback: if there are well-separated columns (multiple 2+ spaces), last column is often the club
+                if (string.IsNullOrWhiteSpace(result.Team))
+                {
+                    var cols = Regex.Split(workingLine, @"\s{2,}")
+                                    .Select(p => p.Trim())
+                                    .Where(p => !string.IsNullOrEmpty(p))
+                                    .ToArray();
+                    if (cols.Length > 1)
+                    {
+                        var lastCol = cols.Last();
+                        // Heuristic: club contains letters and is not just a small token
+                        if (lastCol.Any(char.IsLetter) && lastCol.Length > 2)
+                        {
+                            result.Team = lastCol.Trim().TrimEnd('.', ',', ';', ':');
+                            // remove lastCol from workingLine
+                            var idx = workingLine.LastIndexOf(lastCol, StringComparison.Ordinal);
+                            if (idx >= 0)
+                                workingLine = workingLine.Substring(0, idx).Trim();
+                        }
+                    }
+                }
+
+                // Try explicit P.Ca pattern (e.g., "P.Ca 12" or "P.Ca:12")
+                var pcaMatch = Regex.Match(workingLine, @"\bP\.?\s*\.??\s*ca\.?\s*[:\-]?\s*(\d{1,3})\b", RegexOptions.IgnoreCase);
+                if (pcaMatch.Success && int.TryParse(pcaMatch.Groups[1].Value, out int posCat))
+                {
+                    result.PositionByCategory = posCat;
+                    // remove the matched token
+                    workingLine = workingLine.Replace(pcaMatch.Value, " ").Trim();
+                }
+
+                // If category exists but PositionByCategory not yet set, try to find a number immediately after category token
+                if (!result.PositionByCategory.HasValue && !string.IsNullOrWhiteSpace(result.AgeCategory))
+                {
+                    var afterCatPattern = Regex.Escape(result.AgeCategory) + @"\s+(\d{1,3})\b";
+                    var afterCatMatch = Regex.Match(workingLine, afterCatPattern, RegexOptions.IgnoreCase);
+                    if (afterCatMatch.Success && int.TryParse(afterCatMatch.Groups[1].Value, out int posCatAdj))
+                    {
+                        result.PositionByCategory = posCatAdj;
+                        workingLine = workingLine.Replace(afterCatMatch.Value, " ").Trim();
+                    }
+                }
+
+                // Also accept alternative forms like "P Ca" or "P/Ca" without dots (already partially handled,
+                // but add a broader check to capture loose usages)
+                if (!result.PositionByCategory.HasValue)
+                {
+                    var pcaLoose = Regex.Match(workingLine, @"\bP\s*[/\\\.]?\s*Ca\s*[:\-]?\s*(\d{1,3})\b", RegexOptions.IgnoreCase);
+                    if (pcaLoose.Success && int.TryParse(pcaLoose.Groups[1].Value, out int posCat2))
+                    {
+                        result.PositionByCategory = posCat2;
+                        workingLine = workingLine.Replace(pcaLoose.Value, " ").Trim();
+                    }
+                }
+
+                // Try to extract explicit category label like "Catégorie: SH" or "Cat: V1"
+                if (string.IsNullOrWhiteSpace(result.AgeCategory))
+                {
+                    var catRegex = new Regex(@"\bcat(?:egor?ie)?[:\s\-]*([A-Za-zÀ-ÿ0-9\s\-]{1,20})\b", RegexOptions.IgnoreCase);
+                    var catMatch = catRegex.Match(workingLine);
+                    if (catMatch.Success)
+                    {
+                        var catText = catMatch.Groups[1].Value.Trim().TrimEnd('.', ',', ';', ':');
+                        if (!string.IsNullOrWhiteSpace(catText) && Regex.IsMatch(catText, @"^[A-Za-zÀ-ÿ0-9\s\-]{1,20}$"))
+                        {
+                            result.AgeCategory = catText;
+                            workingLine = workingLine.Replace(catMatch.Value, " ").Trim();
+                        }
+                    }
+                }
+
+                // Use CANONICAL category extraction - this is specific to ChallengeLaMeuse format
+                // Try to find canonical categories in the remaining text
+                ResolveCanonicalCategoryFromLineLocal(workingLine, result);
+
+                // After removals, what's left should be the participant name (possibly with category markers)
+                result.FullName = CleanExtractedName(workingLine);
+
+                if (string.IsNullOrWhiteSpace(result.FullName))
+                {
+                    // fallback to name source cleaned
+                    result.FullName = CleanExtractedName(nameSource);
+                }
+
+                // Final fallbacks
+                if (string.IsNullOrWhiteSpace(result.FullName))
+                    result.FullName = nameSource;
+
+                // Member matching / name splitting
+                var matched = FindMatchingMember(members, result.FullName);
+                if (matched != null)
+                {
+                    result.FirstName = matched.FirstName;
+                    result.LastName = matched.LastName;
+                    result.IsMember = true;
+                }
+                else
+                {
+                    var np = ExtractNameParts(result.FullName);
+                    result.FirstName = np.firstName;
+                    result.LastName = np.lastName;
+                    result.IsMember = false;
+                }
+
+                // Validate that we have valid names (not just numbers)
+                if (!IsValidName(result.FirstName) || !IsValidName(result.LastName))
+                {
+                    System.Diagnostics.Debug.WriteLine($"ChallengeLaMeuse: Rejected result with invalid name - FirstName: '{result.FirstName}', LastName: '{result.LastName}' at position {result.Position}");
+                    return null;
+                }
+
+                return result.Position.HasValue && !string.IsNullOrWhiteSpace(result.FullName) ? result : null;
+            }
+        }
+
+        // ===== GOAL TIMING FORMAT PARSER =====
+        // Specific parser for Goal Timing system PDFs
+        // Columns: Rank | Dos | [empty] | Nom Prenom | Sexe | Club | Cat | Pl/Cat | Temps | T/Km | Vitesse | Points
+        private class GoalTimingFormatParser : BasePdfFormatParser
+        {
+            private static readonly HashSet<string> _validCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "SH", "V1", "V2", "SD", "V3", "ESH", "A2", "A1", "V4", "ESF", "V5", "A3", "A4", "A5"
+            };
+
+            private Dictionary<string, int> _columnPositions;
+            private bool _headerParsed = false;
+
+            public override bool CanParse(string pdfText, RaceMetadata metadata)
+            {
+                var lower = pdfText.ToLowerInvariant();
+
+                // STRONG indicators for Goal Timing format
+                bool hasStrongIndicators = lower.Contains("goal timing") ||
+                                          lower.Contains("goaltiming") ||
+                                          lower.Contains("www.goaltiming");
+
+                if (hasStrongIndicators)
+                    return true;
+
+                // MEDIUM indicators - typical Goal Timing uses "Rank" instead of "Pl."
+                bool hasMediumIndicators = lower.Contains("rank") && 
+                                          (lower.Contains("pl/cat") || lower.Contains("t/km"));
+
+                if (hasMediumIndicators)
+                    return true;
+
+                // Check filename pattern for Goal Timing (Grand Challenge uses Goal Timing)
+                var fileName = metadata?.RaceName?.ToLowerInvariant() ?? "";
+                if ((fileName.Contains("gc") || fileName.Contains("grand challenge") || 
+                     fileName.Contains("seraing") || fileName.Contains("gravier")) &&
+                    lower.Contains("rank"))
+                {
+                    return true;
+                }
+
+                return false;
+            }
+
+            public override string GetFormatName() => "Goal Timing Format";
+
+            public override ParsedPdfResult ParseLine(string line, List<Member> members)
+            {
+                var result = new ParsedPdfResult();
+
+                // Extract position (required)
+                var posMatch = Regex.Match(line, PositionPattern);
+                if (!posMatch.Success || !int.TryParse(posMatch.Groups[1].Value, out int position))
+                    return null;
+
+                result.Position = position;
+                var workingLine = line.Substring(posMatch.Length).Trim();
+                var nameSource = workingLine;
+
+                // Extract times first
+                var timeMatches = Regex.Matches(workingLine, TimePattern);
+                foreach (Match tm in timeMatches)
+                {
+                    var parsed = ParseTime(tm.Value);
+                    if (parsed.HasValue)
+                    {
+                        if (!result.RaceTime.HasValue && parsed.Value.TotalMinutes > RaceTimeThresholdMinutes)
+                        {
+                            result.RaceTime = parsed.Value;
+                        }
+                        else if (!result.TimePerKm.HasValue && parsed.Value.TotalMinutes < RaceTimeThresholdMinutes)
+                        {
+                            result.TimePerKm = parsed.Value;
+                        }
+
+                        workingLine = workingLine.Replace(tm.Value, " ").Trim();
+                    }
+                }
+
+                // Extract speed
+                var speedMatch = Regex.Match(workingLine, SpeedPattern);
+                if (speedMatch.Success)
+                {
+                    var parsedSpeed = ParseSpeed(speedMatch.Groups[1].Value);
+                    if (parsedSpeed.HasValue)
+                    {
+                        result.Speed = parsedSpeed.Value;
+                        workingLine = workingLine.Replace(speedMatch.Value, " ").Trim();
+                    }
+                }
+
+                // Extract team from parentheses/brackets
+                var teamMatch = Regex.Match(workingLine, @"\((.*?)\)|\[(.*?)\]");
+                if (teamMatch.Success)
+                {
+                    result.Team = !string.IsNullOrEmpty(teamMatch.Groups[1].Value)
+                        ? teamMatch.Groups[1].Value
+                        : teamMatch.Groups[2].Value;
+                    workingLine = workingLine.Replace(teamMatch.Value, " ").Trim();
+                }
+
+                // Try to extract explicit club/team tokens
+                if (string.IsNullOrWhiteSpace(result.Team))
+                {
+                    var clubRegex = new Regex(@"\b(?:club|équipe|equipe|team)[:\s\-]*([A-Za-zÀ-ÿ0-9\-\&\s]{2,60})", RegexOptions.IgnoreCase);
+                    var clubMatch = clubRegex.Match(workingLine);
+                    if (clubMatch.Success)
+                    {
+                        var teamText = clubMatch.Groups[1].Value.Trim().TrimEnd('.', ',', ';', ':');
+                        if (!string.IsNullOrWhiteSpace(teamText))
+                        {
+                            result.Team = teamText;
+                            workingLine = workingLine.Replace(clubMatch.Value, " ").Trim();
+                        }
+                    }
+                }
+
+                // Extract category info
+                ExtractCategoryFromText(workingLine, result);
+
+                // Set full name
+                result.FullName = CleanExtractedName(workingLine);
+
+                if (string.IsNullOrWhiteSpace(result.FullName))
+                {
+                    result.FullName = CleanExtractedName(nameSource);
+                }
+
+                if (string.IsNullOrWhiteSpace(result.FullName))
+                    result.FullName = nameSource;
+
+                // Match member
+                var matchedMember = FindMatchingMember(members, result.FullName);
+                if (matchedMember != null)
+                {
+                    result.FirstName = matchedMember.FirstName;
+                    result.LastName = matchedMember.LastName;
+                    result.IsMember = true;
+                }
+                else
+                {
+                    var nameParts = ExtractNameParts(result.FullName);
+                    result.FirstName = nameParts.firstName;
+                    result.LastName = nameParts.lastName;
+                    result.IsMember = false;
+                }
+
+                // Validate that we have valid names (not just numbers)
+                if (!IsValidName(result.FirstName) || !IsValidName(result.LastName))
+                {
+                    System.Diagnostics.Debug.WriteLine($"GoalTiming: Rejected result with invalid name - FirstName: '{result.FirstName}', LastName: '{result.LastName}' at position {result.Position}");
+                    return null;
+                }
+
+                return result.Position.HasValue && !string.IsNullOrWhiteSpace(result.FullName) ? result : null;
+            }
+
+            private bool IsHeaderRow(string line)
+            {
+                var lower = line.ToLowerInvariant();
+                return lower.Contains("rank") && (lower.Contains("nom") || lower.Contains("prenom"));
+            }
+
+            private Dictionary<string, int> DetectColumnPositions(string headerLine)
+            {
+                var positions = new Dictionary<string, int>();
+                var lowerHeader = headerLine.ToLowerInvariant();
+
+                var columnMappings = new Dictionary<string, string[]>
+                {
+                    { "position", new[] { "rank", "rang", " pl." } },
+                    { "bib", new[] { "dos", "dossard" } },
+                    { "name", new[] { "nom prenom", "nom prénom", " nom" } },
+                    { "sex", new[] { "sexe" } },
+                    { "team", new[] { "club", "équipe" } },
+                    { "category", new[] { " cat", "catégorie" } },
+                    { "positioncat", new[] { "pl/cat", "pl. cat", "clas.cat" } },
+                    { "time", new[] { "temps" } },
+                    { "pace", new[] { "t/km", "min/km", "allure" } },
+                    { "speed", new[] { "vitesse" } },
+                    { "points", new[] { "points" } }
+                };
+
+                foreach (var mapping in columnMappings)
+                {
+                    foreach (var keyword in mapping.Value)
+                    {
+                        var index = lowerHeader.IndexOf(keyword);
+                        if (index >= 0)
+                        {
+                            // For better matching with short keywords
+                            bool validMatch = true;
+                            if (keyword.Length <= 4 && index > 0)
+                            {
+                                var prevChar = lowerHeader[index - 1];
+                                if (char.IsLetter(prevChar))
+                                {
+                                    validMatch = false;
+                                }
+                            }
+
+                            if (validMatch && !positions.ContainsKey(mapping.Key))
+                            {
+                                positions[mapping.Key] = index;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                System.Diagnostics.Debug.WriteLine($"GoalTiming: Detected {positions.Count} columns");
+                foreach (var pos in positions.OrderBy(p => p.Value))
+                {
+                    System.Diagnostics.Debug.WriteLine($"  {pos.Key}: {pos.Value}");
+                }
+
+                return positions;
+            }
+
+            private ParsedPdfResult ParseLineUsingColumns(string line, List<Member> members)
+            {
+                var result = new ParsedPdfResult();
+
+                try
+                {
+                    // Extract position (required)
+                    if (_columnPositions.ContainsKey("position"))
+                    {
+                        var posText = ExtractColumnValue(line, "position");
+                        if (!string.IsNullOrWhiteSpace(posText) && int.TryParse(posText.TrimEnd('.', ','), out int position))
+                            result.Position = position;
+                        else
+                            return null;
+                    }
+
+                    // Extract name (required) - Format: "LASTNAME Firstname"
+                    if (_columnPositions.ContainsKey("name"))
+                    {
+                        var nameText = ExtractColumnValue(line, "name");
+                        if (string.IsNullOrWhiteSpace(nameText))
+                            return null;
+
+                        result.FullName = nameText;
+
+                        // Parse "LASTNAME Firstname" format
+                        var parts = nameText.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length >= 2)
+                        {
+                            // First part is typically LASTNAME (uppercase), rest is firstname
+                            if (IsAllCaps(parts[0]))
+                            {
+                                result.LastName = parts[0];
+                                result.FirstName = string.Join(" ", parts.Skip(1));
+                            }
+                            else
+                            {
+                                // Fallback: use standard extraction
+                                var nameParts = ExtractNameParts(nameText);
+                                result.FirstName = nameParts.firstName;
+                                result.LastName = nameParts.lastName;
+                            }
+                        }
+                        else
+                        {
+                            result.FirstName = nameText;
+                            result.LastName = nameText;
+                        }
+                    }
+                    else
+                    {
+                        return null;
+                    }
+
+                    // Extract sex (H = Male, F = Female)
+                    if (_columnPositions.ContainsKey("sex"))
+                    {
+                        var sexText = ExtractColumnValue(line, "sex")?.Trim().ToUpperInvariant();
+                        if (!string.IsNullOrEmpty(sexText))
+                        {
+                            if (sexText == "H" || sexText == "M")
+                                result.Sex = "M";
+                            else if (sexText == "F" || sexText == "D")
+                                result.Sex = "F";
+                        }
+                    }
+
+                    // Extract team
+                    if (_columnPositions.ContainsKey("team"))
+                    {
+                        result.Team = ExtractColumnValue(line, "team");
+                    }
+
+                    // Extract category
+                    if (_columnPositions.ContainsKey("category"))
+                    {
+                        var catText = ExtractColumnValue(line, "category")?.Trim();
+                        if (!string.IsNullOrWhiteSpace(catText))
+                        {
+                            // Accept category as-is (valid categories list is for reference only)
+                            result.AgeCategory = catText;
+                        }
+                    }
+
+                    // Extract position by category
+                    if (_columnPositions.ContainsKey("positioncat"))
+                    {
+                        var posCatText = ExtractColumnValue(line, "positioncat");
+                        if (int.TryParse(posCatText, out int posCat))
+                            result.PositionByCategory = posCat;
+                    }
+
+                    // Extract race time
+                    if (_columnPositions.ContainsKey("time"))
+                    {
+                        var timeText = ExtractColumnValue(line, "time");
+                        var parsedTime = ParseTime(timeText);
+                        if (parsedTime.HasValue)
+                        {
+                            // Accept any time - filter later if needed
+                            if (parsedTime.Value.TotalMinutes > RaceTimeThresholdMinutes)
+                                result.RaceTime = parsedTime.Value;
+                            else if (parsedTime.Value.TotalMinutes > 0)
+                                result.TimePerKm = parsedTime.Value; // Might be pace
+                        }
+                    }
+
+                    // Extract pace (T/Km)
+                    if (_columnPositions.ContainsKey("pace"))
+                    {
+                        var paceText = ExtractColumnValue(line, "pace");
+                        var parsedPace = ParseTime(paceText);
+                        if (parsedPace.HasValue && parsedPace.Value.TotalMinutes < RaceTimeThresholdMinutes)
+                            result.TimePerKm = parsedPace.Value;
+                    }
+
+                    // Extract speed
+                    if (_columnPositions.ContainsKey("speed"))
+                    {
+                        var speedText = ExtractColumnValue(line, "speed");
+                        var parsedSpeed = ParseSpeed(speedText);
+                        if (parsedSpeed.HasValue)
+                            result.Speed = parsedSpeed.Value;
+                    }
+
+                    // Match member
+                    var matchedMember = FindMatchingMember(members, result.FullName);
+                    if (matchedMember != null)
+                    {
+                        result.FirstName = matchedMember.FirstName;
+                        result.LastName = matchedMember.LastName;
+                        result.IsMember = true;
+                    }
+                    else
+                    {
+                        result.IsMember = false;
+                    }
+
+                    return result.Position.HasValue && !string.IsNullOrWhiteSpace(result.FullName) ? result : null;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"GoalTiming parser error: {ex.Message}");
+                    return null;
+                }
+            }
+
+            private string ExtractColumnValue(string line, string columnKey)
+            {
+                if (!_columnPositions.ContainsKey(columnKey))
+                    return null;
+
+                var startPos = _columnPositions[columnKey];
+                var endPos = GetNextColumnPosition(startPos);
+
+                if (startPos >= line.Length)
+                    return string.Empty;
+
+                if (endPos == int.MaxValue || endPos > line.Length)
+                    return line.Substring(startPos).Trim();
+                else
+                {
+                    var length = Math.Min(endPos - startPos, line.Length - startPos);
+                    return line.Substring(startPos, length).Trim();
+                }
+            }
+
+            private int GetNextColumnPosition(int currentPosition)
+            {
+                var nextPositions = _columnPositions.Values.Where(p => p > currentPosition).OrderBy(p => p);
+                return nextPositions.Any() ? nextPositions.First() : int.MaxValue;
+            }
+
+            private bool IsAllCaps(string text)
+            {
+                if (string.IsNullOrWhiteSpace(text))
+                    return false;
+                if (!text.Any(char.IsLetter))
+                    return false;
+                return text.Where(char.IsLetter).All(char.IsUpper);
+            }
         }
 
         public Dictionary<int, string> GetRaceResults(string filePath, List<Member> members)
@@ -513,9 +2152,14 @@ namespace NameParser.Infrastructure.Repositories
 
             // Try each parser until one successfully detects the format
             IPdfFormatParser selectedParser = null;
+            System.Diagnostics.Debug.WriteLine($"=== Testing parsers for: {_raceMetadata?.RaceName ?? "Unknown"} ===");
+
             foreach (var parser in _formatParsers)
             {
-                if (parser.CanParse(pdfText, _raceMetadata))
+                bool canParse = parser.CanParse(pdfText, _raceMetadata);
+                System.Diagnostics.Debug.WriteLine($"  {parser.GetFormatName()}: {(canParse ? "YES" : "no")}");
+
+                if (canParse)
                 {
                     selectedParser = parser;
                     break;
@@ -526,7 +2170,10 @@ namespace NameParser.Infrastructure.Repositories
             {
                 // Fallback to standard parser
                 selectedParser = _formatParsers[_formatParsers.Count - 1];
+                System.Diagnostics.Debug.WriteLine($"  No parser matched - using fallback: {selectedParser.GetFormatName()}");
             }
+
+            System.Diagnostics.Debug.WriteLine($"=== Selected: {selectedParser.GetFormatName()} ===");
 
             // Parse all lines with the selected parser
             int lineNumber = 0;
@@ -673,6 +2320,7 @@ namespace NameParser.Infrastructure.Repositories
                 "place", "position", "nom", "name", "temps", "time", 
                 "vitesse", "speed", "équipe", "team", "club",
                 "pos", "pl", "pl.", "rang", "dos", "min/km", "cat", "catégorie",
+                "Catégorie", "P.Ca",
                 "dossard", "bib"
             };
 
@@ -1068,27 +2716,112 @@ namespace NameParser.Infrastructure.Repositories
                         continue;
                     }
 
-                    // Check for category codes - comprehensive list
-                    if (result.AgeCategory == null && IsValidCategoryCode(trimmed))
-                    {
-                        result.AgeCategory = trimmed;
-                        extractionCount++;
-                        System.Diagnostics.Debug.WriteLine($"    Extracted AgeCategory: {trimmed}");
-                        continue;
-                    }
-
-                    // Check for multi-word categories (e.g., "Senior H", "Veteran 1")
+                    // Check for multi-word categories FIRST (before single-word)
+                    // This handles cases like "Senior H", "Veteran 2", "Moins16 H"
                     if (result.AgeCategory == null && i < parts.Length - 1)
                     {
                         var combined = $"{trimmed} {parts[i + 1]}";
+
+                        // Check if it's a valid multi-word category
                         if (IsValidCategoryPhrase(combined))
                         {
-                            result.AgeCategory = combined;
+                            // Check if there's a position number after the category
+                            string candidate = combined;
+                            int? trailingNum = null;
+
+                            if (i + 2 < parts.Length && Regex.IsMatch(parts[i + 2], "^\\d{1,3}$"))
+                            {
+                                if (int.TryParse(parts[i + 2], out int parsed))
+                                {
+                                    trailingNum = parsed;
+                                    // Don't add the number to the category name, it's the position
+                                }
+                            }
+
+                            result.AgeCategory = candidate;
+                            if (trailingNum.HasValue)
+                            {
+                                result.PositionByCategory = trailingNum.Value;
+                                i += 2; // Skip the sex marker and position number
+                            }
+                            else
+                            {
+                                i++; // Skip the sex marker
+                            }
+
                             extractionCount++;
-                            System.Diagnostics.Debug.WriteLine($"    Extracted AgeCategory (multi-word): {combined}");
-                            i++; // Skip next part as we consumed it
+                            System.Diagnostics.Debug.WriteLine($"    Extracted AgeCategory (multi-word): {result.AgeCategory}");
+                            if (trailingNum.HasValue)
+                                System.Diagnostics.Debug.WriteLine($"    Extracted PositionByCategory: {trailingNum.Value}");
+
                             continue;
                         }
+
+                        // Check for category + number pattern (e.g., "Veteran 2")
+                        // where the number IS part of the category, not the position
+                        if (Regex.IsMatch(parts[i + 1], "^\\d{1}$") && IsValidCategoryCode(trimmed))
+                        {
+                            var catWithNum = combined;
+
+                            // Check if there's ANOTHER number after this (that would be the position)
+                            int? positionNum = null;
+                            if (i + 2 < parts.Length && Regex.IsMatch(parts[i + 2], "^\\d{1,3}$"))
+                            {
+                                if (int.TryParse(parts[i + 2], out int parsed))
+                                {
+                                    positionNum = parsed;
+                                }
+                            }
+
+                            result.AgeCategory = catWithNum;
+                            if (positionNum.HasValue)
+                            {
+                                result.PositionByCategory = positionNum.Value;
+                                i += 2; // Skip number and position
+                            }
+                            else
+                            {
+                                i++; // Skip the number
+                            }
+
+                            extractionCount++;
+                            System.Diagnostics.Debug.WriteLine($"    Extracted AgeCategory (with number): {result.AgeCategory}");
+                            if (positionNum.HasValue)
+                                System.Diagnostics.Debug.WriteLine($"    Extracted PositionByCategory: {positionNum.Value}");
+
+                            continue;
+                        }
+                    }
+
+                    // Check for category codes - comprehensive list
+                    if (result.AgeCategory == null && IsValidCategoryCode(trimmed))
+                    {
+                        // Build candidate including possible adjacent number/sex
+                        string candidate = trimmed;
+                        int? adjacentNumber = null;
+
+                        // Check for pattern: CategoryCode + Sex + Position (e.g., "SH 12")
+                        if (i + 1 < parts.Length && Regex.IsMatch(parts[i + 1], "^\\d{1,3}$"))
+                        {
+                            if (int.TryParse(parts[i + 1], out int parsed))
+                            {
+                                adjacentNumber = parsed;
+                            }
+                        }
+
+                        result.AgeCategory = candidate;
+                        if (adjacentNumber.HasValue)
+                        {
+                            result.PositionByCategory = adjacentNumber.Value;
+                            i++; // consume number
+                        }
+
+                        extractionCount++;
+                        System.Diagnostics.Debug.WriteLine($"    Extracted AgeCategory: {result.AgeCategory}");
+                        if (adjacentNumber.HasValue)
+                            System.Diagnostics.Debug.WriteLine($"    Extracted PositionByCategory: {adjacentNumber.Value}");
+
+                        continue;
                     }
                 }
 
@@ -1098,7 +2831,7 @@ namespace NameParser.Infrastructure.Repositories
                 }
             }
 
-            private bool IsValidCategoryCode(string code)
+            protected bool IsValidCategoryCode(string code)
             {
                 if (string.IsNullOrWhiteSpace(code))
                     return false;
@@ -1109,6 +2842,10 @@ namespace NameParser.Infrastructure.Repositories
                 if (Regex.IsMatch(upper, @"^S[HMFD]$")) // SH, SM, SD, SF
                     return true;
                 if (Regex.IsMatch(upper, @"^SEN[HFD]?$")) // SEN, SENH, SENF, SEND
+                    return true;
+
+                // Generic gender categories
+                if (upper == "HOM" || upper == "DAM") // Hommes, Dames
                     return true;
 
                 // Veteran categories (Men)
@@ -1126,15 +2863,19 @@ namespace NameParser.Infrastructure.Repositories
                     return true;
 
                 // Youth/Junior categories
-                if (Regex.IsMatch(upper, @"^ESP[HFG]?$")) // ESP, ESPH, ESPF, ESPG
+                if (Regex.IsMatch(upper, @"^ESP[HFGD]?$")) // ESP, ESPH, ESPF, ESPG, ESPD
                     return true;
-                if (Regex.IsMatch(upper, @"^ES[HFG]$")) // ESH, ESF, ESG
+                if (Regex.IsMatch(upper, @"^ES[HFGD]$")) // ESH, ESF, ESG, ESD
                     return true;
-                if (Regex.IsMatch(upper, @"^JUN[HF]?$")) // JUN, JUNH, JUNF
+                if (Regex.IsMatch(upper, @"^JUN[HFD]?$")) // JUN, JUNH, JUNF, JUND
                     return true;
-                if (Regex.IsMatch(upper, @"^CAD[HF]?$")) // CAD, CADH, CADF
+                if (Regex.IsMatch(upper, @"^CAD[HFD]?$")) // CAD, CADH, CADF, CADD
                     return true;
                 if (upper == "SCO" || upper == "BEN" || upper == "PUP" || upper == "MIN")
+                    return true;
+
+                // Youth categories with Moins prefix (e.g., "Moins16", "Moins14")
+                if (Regex.IsMatch(upper, @"^MOINS\d{2}$")) // MOINS16, MOINS14, MOINS12
                     return true;
 
                 // Master categories (alternative system)
@@ -1150,7 +2891,7 @@ namespace NameParser.Infrastructure.Repositories
                 return false;
             }
 
-            private bool IsValidCategoryPhrase(string phrase)
+            protected bool IsValidCategoryPhrase(string phrase)
             {
                 if (string.IsNullOrWhiteSpace(phrase))
                     return false;
@@ -1164,15 +2905,21 @@ namespace NameParser.Infrastructure.Repositories
                     return true;
                 if (Regex.IsMatch(upper, @"^AINEE\s+[1-3]$")) // "Ainée 1", "Ainée 2", "Ainée 3"
                     return true;
-                if (Regex.IsMatch(upper, @"^ESPOIR\s+[HFG]?$")) // "Espoir H", "Espoir F", "Espoir G"
+                if (Regex.IsMatch(upper, @"^ESPOIR\s+[HFGD]?$")) // "Espoir H", "Espoir F", "Espoir G", "Espoir D"
                     return true;
-                if (Regex.IsMatch(upper, @"^JUNIOR\s+[HF]?$")) // "Junior H", "Junior F"
+                if (Regex.IsMatch(upper, @"^ESP\s+[HFGD]$")) // "Esp H", "Esp F", "Esp G", "Esp D"
                     return true;
-                if (Regex.IsMatch(upper, @"^CADET\s+[HF]?$")) // "Cadet H", "Cadet F"
+                if (Regex.IsMatch(upper, @"^JUNIOR\s+[HFD]?$")) // "Junior H", "Junior F", "Junior D"
+                    return true;
+                if (Regex.IsMatch(upper, @"^CADET\s+[HFD]?$")) // "Cadet H", "Cadet F", "Cadet D"
                     return true;
                 if (Regex.IsMatch(upper, @"^MASTER\s+\d{2}\+?$")) // "Master 40+", "Master 45"
                     return true;
                 if (Regex.IsMatch(upper, @"^WOMEN\s+\d{2}\+?$")) // "Women 40+", "Women 45"
+                    return true;
+
+                // Youth categories with "Moins" prefix and sex marker
+                if (Regex.IsMatch(upper, @"^MOINS\d{2}\s+[HFD]$")) // "Moins16 H", "Moins14 D", etc.
                     return true;
 
                 return false;
@@ -1189,7 +2936,11 @@ namespace NameParser.Infrastructure.Repositories
 
                 foreach (var part in parts)
                 {
-                    // Stop if we hit a standalone number
+                    // Skip bib numbers at the start (typically 1-4 digits)
+                    if (nameParts.Count == 0 && Regex.IsMatch(part, @"^\d{1,4}$"))
+                        continue;
+
+                    // Stop if we hit a standalone number (position/bib)
                     if (Regex.IsMatch(part, @"^\d+$"))
                         break;
 
@@ -1236,6 +2987,9 @@ namespace NameParser.Infrastructure.Repositories
 
                 var parts = fullName.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
 
+                // Filter out any parts that are just numbers (bib numbers)
+                parts = parts.Where(p => !IsJustNumber(p)).ToArray();
+
                 if (parts.Length == 0)
                     return ("Unknown", "Unknown");
 
@@ -1262,6 +3016,31 @@ namespace NameParser.Infrastructure.Repositories
 
                 // Multiple parts - more complex logic
                 return ExtractMultiPartName(parts);
+            }
+
+            private bool IsJustNumber(string text)
+            {
+                if (string.IsNullOrWhiteSpace(text))
+                    return false;
+
+                // Check if the entire string is just digits (possibly with whitespace)
+                return text.All(c => char.IsDigit(c) || char.IsWhiteSpace(c));
+            }
+
+            protected bool IsValidName(string name)
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                    return false;
+
+                // Name must contain at least one letter
+                if (!name.Any(char.IsLetter))
+                    return false;
+
+                // Name should not be just a number
+                if (IsJustNumber(name))
+                    return false;
+
+                return true;
             }
 
             private string CleanFullName(string fullName)
@@ -1423,6 +3202,18 @@ namespace NameParser.Infrastructure.Repositories
             public override bool CanParse(string pdfText, RaceMetadata metadata)
             {
                 var lowerText = pdfText.ToLowerInvariant();
+
+                // Don't match if this looks like GlobalPacing format (avoid false positives)
+                if (lowerText.Contains("clas.sexe") || lowerText.Contains("clas.cat") || 
+                    lowerText.Contains("global pacing") || lowerText.Contains("globalpacing"))
+                    return false;
+
+                // Don't match Classement-XXkm pattern (typically GlobalPacing)
+                var fileName = metadata?.RaceName?.ToLowerInvariant() ?? "";
+                if (fileName.StartsWith("classement") && fileName.Contains("km"))
+                    return false;
+
+                // Standard French column format detection
                 return (lowerText.Contains("pl.") || lowerText.Contains("pl ")) &&
                        lowerText.Contains("dos") &&
                        lowerText.Contains("nom") &&
@@ -1455,9 +3246,13 @@ namespace NameParser.Infrastructure.Repositories
             private bool IsHeaderRow(string line)
             {
                 var lowerLine = line.ToLowerInvariant();
-                // Must contain at least Pl. and Nom to be a header
-                return (lowerLine.Contains("pl.") || lowerLine.Contains("pl ")) && 
-                       lowerLine.Contains("nom");
+                // Must contain "nom" and some form of a position/header marker to be a header
+                // Accept various short forms used in different PDFs (pl., pl, p., pos, place, rang, P.Ca etc.)
+                var hasName = lowerLine.Contains("nom");
+                var positionKeywords = new[] { "pl.", "pl ", "p.", "p ", "pos", "place", "rang", "p.ca", "p ca", "p/ca" };
+                var hasPositionKeyword = positionKeywords.Any(k => lowerLine.Contains(k));
+
+                return hasName && hasPositionKeyword;
             }
 
             private Dictionary<string, int> DetectColumnPositions(string headerLine)
@@ -1474,7 +3269,8 @@ namespace NameParser.Infrastructure.Repositories
                     { "sex", new[] { "sexe", "sex", "s.", "s ", "genre" } },
                     { "positionsex", new[] { "pl./s.", "pl. sexe", "pl.sexe", "clas.sexe", "clas. sexe", "pos.sexe", "classement sexe", "cl.s", "pos/sexe" } },
                     { "category", new[] { "cat.", "cat ", "catég.", "catégorie", "categ.", "category", "cat°" } },
-                    { "positioncat", new[] { "pl./c.", "pl./cat.", "pl. cat", "pl.cat", "clas. cat", "clas.cat", "pos.cat", "classement cat", "cl.cat", "pos/cat" } },
+                    // Accept common short forms such as "P.Ca" (position par catégorie) used in some organisers' PDFs
+                    { "positioncat", new[] { "pl./c.", "pl./cat.", "pl. cat", "pl.cat", "clas. cat", "clas.cat", "pos.cat", "classement cat", "cl.cat", "pos/cat", "p.ca", "p ca", "p.ca.", "p/ca" } },
                     { "team", new[] { "club", "équipe", "equipe", "team", "société", "societe" } },
                     { "speed", new[] { "vitesse", "speed", "km/h", "allure" } },
                     { "time", new[] { "temps", "time", "chrono" } },
@@ -1521,6 +3317,7 @@ namespace NameParser.Infrastructure.Repositories
 
                 try
                 {
+                    string rawName = null;
                     // Extract position (required)
                     if (_columnPositions.ContainsKey("position"))
                     {
@@ -1556,7 +3353,7 @@ namespace NameParser.Infrastructure.Repositories
                     {
                         var nameStart = _columnPositions["name"];
                         var nameEnd = GetNextColumnPosition(nameStart);
-                        var rawName = ExtractColumnValue(line, nameStart, nameEnd);
+                        rawName = ExtractColumnValue(line, nameStart, nameEnd);
 
                         if (string.IsNullOrWhiteSpace(rawName))
                         {
@@ -1577,12 +3374,143 @@ namespace NameParser.Infrastructure.Repositories
                         return null; // No name column found
                     }
 
+                    // Heuristic: if header did not provide category/positioncat but the line has clear columns,
+                    // try to detect category (full-word like "Séniors", "Dames", "Vétérans 3", "Ainées 1")
+                    // and the P.Ca which is usually the next column after category.
+                    if (!_columnPositions.ContainsKey("category") || !_columnPositions.ContainsKey("positioncat"))
+                    {
+                        try
+                        {
+                            var splitCols = Regex.Split(line, @"\s{2,}")
+                                                 .Select(p => p.Trim())
+                                                 .Where(p => !string.IsNullOrEmpty(p))
+                                                 .ToArray();
+
+                            // Find index of name column occurrence (match by approximate equality)
+                            int nameIndex = -1;
+                            for (int ci = 0; ci < splitCols.Length; ci++)
+                            {
+                                // if rawName appears within column text
+                                if (splitCols[ci].IndexOf(rawName, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                    CleanExtractedName(splitCols[ci]).Equals(result.FullName, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    nameIndex = ci;
+                                    break;
+                                }
+                            }
+
+                            if (nameIndex >= 0)
+                            {
+                                // Candidate category is next column
+                                if (nameIndex + 1 < splitCols.Length && string.IsNullOrWhiteSpace(result.AgeCategory))
+                                {
+                                    var candidateCat = splitCols[nameIndex + 1];
+                                    // Normalize and check for known full-word categories
+                                    var norm = NormalizeCategoryToken(candidateCat);
+
+                                    // If candidate contains trailing number, extract it
+                                    var trailingMatch = Regex.Match(candidateCat, "^(.*?)[\\s\\-]*(\\d{1,3})$", RegexOptions.IgnoreCase);
+                                    if (trailingMatch.Success)
+                                    {
+                                        // Preserve full category including the trailing number (e.g. "Vétérans 1")
+                                        result.AgeCategory = candidateCat.Trim();
+                                        var num = trailingMatch.Groups[2].Value;
+                                        if (int.TryParse(num, out int parsedPosCat))
+                                            result.PositionByCategory = parsedPosCat;
+                                    }
+                                    else
+                                    {
+                                        // If candidate looks like a base category (no number), check following column for number or gender qualifier
+                                        bool matched = false;
+
+                                        if (Regex.IsMatch(norm, @"^(SENIORS?|DAMES?|VETERANS?|VET|AINEES?|ESPOIRS?)$", RegexOptions.IgnoreCase) ||
+                                            IsValidCategoryCode(candidateCat) || IsValidCategoryPhrase(candidateCat))
+                                        {
+                                            // Look ahead for a number (P.Ca) or qualifier like 'Garçons'/'Filles'
+                                            if (nameIndex + 2 < splitCols.Length)
+                                            {
+                                                var nextToken = splitCols[nameIndex + 2];
+                                                // If next token is digits -> position by category
+                                                var digits = Regex.Match(nextToken, "^(\\d{1,3})$");
+                                                if (digits.Success && int.TryParse(digits.Groups[1].Value, out int parsedPosCat2))
+                                                {
+                                                    result.AgeCategory = candidateCat.Trim();
+                                                    result.PositionByCategory = parsedPosCat2;
+                                                    matched = true;
+                                                }
+                                                else
+                                                {
+                                                    // Maybe combined qualifier (e.g., "Espoirs" + "Garçons")
+                                                    var combined = candidateCat + " " + nextToken;
+                                                    var normCombined = NormalizeCategoryToken(combined);
+                                                    if (Regex.IsMatch(normCombined, @"^(ESPOIRS?\s+(GARCON|GARCONS|GARÇON|GARÇONS|FILLE|FILLES))$", RegexOptions.IgnoreCase) ||
+                                                        IsValidCategoryPhrase(combined))
+                                                    {
+                                                        result.AgeCategory = combined.Trim();
+                                                        matched = true;
+                                                        // If following token after qualifier is digits, pick it as PositionByCategory
+                                                        if (nameIndex + 3 < splitCols.Length)
+                                                        {
+                                                            var maybeNum = splitCols[nameIndex + 3];
+                                                            var m2 = Regex.Match(maybeNum, "^(\\d{1,3})$");
+                                                            if (m2.Success && int.TryParse(m2.Groups[1].Value, out int parsedPosCat3))
+                                                            {
+                                                                result.PositionByCategory = parsedPosCat3;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            if (!matched)
+                                            {
+                                                // Accept candidateCat as category even without number
+                                                result.AgeCategory = candidateCat.Trim().TrimEnd('.', ',', ';', ':');
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // If P.Ca is just after category, it's usually the following column
+                                if (nameIndex + 2 < splitCols.Length && !result.PositionByCategory.HasValue)
+                                {
+                                    var candidatePosCat = splitCols[nameIndex + 2];
+                                    var digits = Regex.Match(candidatePosCat, @"^(\d{1,3})$");
+                                    if (digits.Success && int.TryParse(digits.Groups[1].Value, out int parsedPosCat))
+                                    {
+                                        result.PositionByCategory = parsedPosCat;
+                                    }
+                                }
+
+                                // If team not set, last column is often team/club
+                                if (string.IsNullOrWhiteSpace(result.Team) && splitCols.Length - 1 > nameIndex)
+                                {
+                                    var last = splitCols.Last();
+                                    if (!string.IsNullOrWhiteSpace(last) && !Regex.IsMatch(last, TimePattern) && !Regex.IsMatch(last, "^\\d+$"))
+                                    {
+                                        // Treat 'Non communique' (and variants) as missing
+                                        if (!Regex.IsMatch(last, @"non\s*communiqu[eé]|non\s*communiqu?", RegexOptions.IgnoreCase))
+                                        {
+                                            result.Team = last.Trim().TrimEnd('.', ',', ';', ':');
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch { /* non-fatal heuristic */ }
+                    }
+
                     // Extract team (optional)
                     if (_columnPositions.ContainsKey("team"))
                     {
                         var teamStart = _columnPositions["team"];
                         var teamEnd = GetNextColumnPosition(teamStart);
                         result.Team = ExtractColumnValue(line, teamStart, teamEnd);
+                        if (!string.IsNullOrWhiteSpace(result.Team))
+                        {
+                            // Clean common trailing punctuation and markers
+                            result.Team = result.Team.Trim().TrimEnd('.', ',', ';', ':');
+                        }
                     }
 
                     // Extract speed (optional)
@@ -1712,13 +3640,41 @@ namespace NameParser.Infrastructure.Repositories
 
                         if (!string.IsNullOrWhiteSpace(catText))
                         {
-                            // Clean category text - remove numbers that look like positions
-                            catText = catText.Trim();
-                            // Common categories: SH, SD, V1, V2, V3, ESF, A1, A2, A3, etc.
-                            // Keep only text that looks like a category (2-20 chars, letters and numbers)
-                            if (Regex.IsMatch(catText, @"^[A-Za-zÀ-ÿ\d\s\-]{1,20}$"))
+                            // Clean category text
+                            catText = catText.Trim().TrimEnd('.', ',', ';', ':');
+
+                            // If category includes an adjacent number (e.g. "Vétérans 3" or "Ainées 1"),
+                            // extract the number as PositionByCategory and keep only the category text
+                            var catNumberMatch = Regex.Match(catText, @"^(.*?)[\s\-]*(\d{1,3})$", RegexOptions.IgnoreCase);
+                            if (catNumberMatch.Success)
                             {
+                                // Preserve the category text as-is (including the number) so we store e.g. "Vétérans 1"
                                 result.AgeCategory = catText;
+                                var num = catNumberMatch.Groups[2].Value;
+                                if (int.TryParse(num, out int parsedPosCat))
+                                {
+                                    result.PositionByCategory = parsedPosCat;
+                                }
+                            }
+                            else
+                            {
+                                // No trailing number, but category might still contain digits elsewhere
+                                var digitMatch = Regex.Match(catText, @"(\d{1,3})");
+                                if (digitMatch.Success)
+                                {
+                                    // If digits are found inside category text, preserve the full category (including number)
+                                    result.AgeCategory = catText;
+                                    var num = digitMatch.Groups[1].Value;
+                                    if (int.TryParse(num, out int parsedPosCat))
+                                    {
+                                        result.PositionByCategory = parsedPosCat;
+                                    }
+                                }
+                                else
+                                {
+                            // Preserve extracted category text as-is for non-LaMeuse parsers
+                            result.AgeCategory = catText;
+                                }
                             }
                         }
                     }
@@ -1934,7 +3890,7 @@ namespace NameParser.Infrastructure.Repositories
         }
 
         // CrossCupFormatParser class
-        private class CrossCupFormatParser : BasePdfFormatParser
+        private class CJPLFormatParser : BasePdfFormatParser
         {
             public override bool CanParse(string pdfText, RaceMetadata metadata)
             {
@@ -2159,7 +4115,7 @@ namespace NameParser.Infrastructure.Repositories
         }
 
         // GrandChallengeFormatParser class
-        private class GrandChallengeFormatParser : BasePdfFormatParser
+        private class ChallengeCondrusienFormatParser : BasePdfFormatParser
         {
             public override bool CanParse(string pdfText, RaceMetadata metadata)
             {
