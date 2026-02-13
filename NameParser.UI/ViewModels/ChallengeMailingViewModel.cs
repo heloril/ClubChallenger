@@ -371,7 +371,7 @@ namespace NameParser.UI.ViewModels
             // Current Challenge Standings - AFFICHER TOUS LES CHALLENGERS
             sb.AppendLine($"<h2 style='color: #FF9800;'>🏆 {(isFrench ? "Classement Actuel du Challenge" : "Current Challenge Standings")}</h2>");
 
-            var challengerClassifications = _classificationRepository.GetChallengerClassification(SelectedChallenge.Year)
+            var challengerClassifications = _classificationRepository.GetChallengerClassificationByChallenge(SelectedChallenge.Id)
                 .OrderBy(c => c.RankByPoints)
                 .ToList(); // TOUS les challengers, pas seulement les 10 premiers
 

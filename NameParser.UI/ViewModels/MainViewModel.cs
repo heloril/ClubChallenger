@@ -1896,7 +1896,7 @@ namespace NameParser.UI.ViewModels
                     return;
                 }
 
-                var challengerClassifications = _classificationRepository.GetChallengerClassification(SelectedChallengeForClassification.Year);
+                var challengerClassifications = _classificationRepository.GetChallengerClassificationByChallenge(SelectedChallengeForClassification.Id);
 
                 ChallengerClassifications.Clear();
                 foreach (var classification in challengerClassifications)
