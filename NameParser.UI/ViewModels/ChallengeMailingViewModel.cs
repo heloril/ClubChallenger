@@ -14,6 +14,9 @@ using NameParser.Infrastructure.Repositories;
 using NameParser.UI.Services;
 using MimeKit;
 using MailKit.Net.Smtp;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 
 #if MAILKIT_INSTALLED
 using MailKit.Net.Smtp;
@@ -407,6 +410,14 @@ namespace NameParser.UI.ViewModels
                 sb.AppendLine("</table>");
             }
 
+            // Link to detailed classification
+            sb.AppendLine("<div style='background-color: #E3F2FD; padding: 15px; border-radius: 5px; margin: 20px 0;'>");
+            sb.AppendLine($"<p style='margin: 0; font-size: 14px;'>");
+            sb.AppendLine($"<strong>📎 {(isFrench ? "Classement Détaillé" : "Detailed Rankings")}</strong><br/>");
+            sb.AppendLine($"{(isFrench ? "Le classement complet avec le détail course par course de chaque challenger est disponible en pièce jointe (PDF)." : "The complete rankings with race-by-race details for each challenger is available as an attachment (PDF).")}");
+            sb.AppendLine("</p>");
+            sb.AppendLine("</div>");
+
             // Footer
             sb.AppendLine("<hr style='border: 1px solid #FF9800; margin-top: 30px;'/>");
             sb.AppendLine($"<p style='font-size: 12px; color: #666;'>{(isFrench ? "Bravo à tous ! À bientôt à la prochaine course ! 🏃💪" : "Keep up the great work! See you at the next race! 🏃💪")}</p>");
@@ -426,15 +437,21 @@ namespace NameParser.UI.ViewModels
 
         private async void ExecuteSendTestEmail(object parameter)
         {
+            string pdfPath = null;
             try
             {
                 IsSending = true;
-                StatusMessage = "Sending test email...";
+                StatusMessage = "Generating PDF attachment...";
 
-                await SendEmailAsync(TestEmailAddress, EmailSubject, EmailBody);
+                // Generate PDF
+                pdfPath = GenerateDetailedClassificationPdf();
+
+                StatusMessage = "Sending test email with PDF attachment...";
+
+                await SendEmailAsync(TestEmailAddress, EmailSubject, EmailBody, pdfPath);
 
                 StatusMessage = $"Test email sent successfully to {TestEmailAddress}!";
-                MessageBox.Show($"Test email sent successfully to {TestEmailAddress}!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show($"Test email sent successfully to {TestEmailAddress} with PDF attachment!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
@@ -444,6 +461,18 @@ namespace NameParser.UI.ViewModels
             }
             finally
             {
+                // Clean up temp PDF file
+                if (!string.IsNullOrEmpty(pdfPath) && File.Exists(pdfPath))
+                {
+                    try
+                    {
+                        File.Delete(pdfPath);
+                    }
+                    catch
+                    {
+                        // Ignore cleanup errors
+                    }
+                }
                 IsSending = false;
             }
         }
@@ -459,6 +488,7 @@ namespace NameParser.UI.ViewModels
 
         private async void ExecuteSendToAllChallengers(object parameter)
         {
+            string pdfPath = null;
             try
             {
                 // Read all challengers directly from Challenge.json
@@ -495,7 +525,7 @@ namespace NameParser.UI.ViewModels
                 }
 
                 var result = MessageBox.Show(
-                    $"This will send the email to {challengerEmails.Count} challenger(s) from Challenge.json.\n\nRecipients:\n{string.Join("\n", challengerEmails.Take(10))}" +
+                    $"This will send the email with PDF attachment to {challengerEmails.Count} challenger(s) from Challenge.json.\n\nRecipients:\n{string.Join("\n", challengerEmails.Take(10))}" +
                     (challengerEmails.Count > 10 ? $"\n... and {challengerEmails.Count - 10} more" : "") +
                     "\n\nAre you sure you want to continue?",
                     "Confirm Send",
@@ -505,6 +535,11 @@ namespace NameParser.UI.ViewModels
                 if (result != MessageBoxResult.Yes) return;
 
                 IsSending = true;
+                StatusMessage = "Generating PDF attachment...";
+
+                // Generate PDF once for all emails
+                pdfPath = GenerateDetailedClassificationPdf();
+
                 int successCount = 0;
                 int failCount = 0;
                 var errors = new List<string>();
@@ -514,7 +549,7 @@ namespace NameParser.UI.ViewModels
                     try
                     {
                         StatusMessage = $"Sending to {email}... ({successCount + failCount + 1}/{challengerEmails.Count})";
-                        await SendEmailAsync(email, EmailSubject, EmailBody);
+                        await SendEmailAsync(email, EmailSubject, EmailBody, pdfPath);
                         successCount++;
 
                         // Small delay to avoid rate limiting
@@ -546,6 +581,18 @@ namespace NameParser.UI.ViewModels
             }
             finally
             {
+                // Clean up temp PDF file
+                if (!string.IsNullOrEmpty(pdfPath) && File.Exists(pdfPath))
+                {
+                    try
+                    {
+                        File.Delete(pdfPath);
+                    }
+                    catch
+                    {
+                        // Ignore cleanup errors
+                    }
+                }
                 IsSending = false;
             }
         }
@@ -561,7 +608,7 @@ namespace NameParser.UI.ViewModels
             public string Team { get; set; }
         }
 
-        private async System.Threading.Tasks.Task SendEmailAsync(string toEmail, string subject, string body)
+        private async System.Threading.Tasks.Task SendEmailAsync(string toEmail, string subject, string body, string attachmentPath = null)
         {
 //#if MAILKIT_INSTALLED
             var message = new MimeMessage();
@@ -573,6 +620,13 @@ namespace NameParser.UI.ViewModels
             {
                 HtmlBody = body
             };
+
+            // Add attachment if provided
+            if (!string.IsNullOrEmpty(attachmentPath) && File.Exists(attachmentPath))
+            {
+                bodyBuilder.Attachments.Add(attachmentPath);
+            }
+
             message.Body = bodyBuilder.ToMessageBody();
 
             using (var client = new SmtpClient())
@@ -590,6 +644,180 @@ namespace NameParser.UI.ViewModels
             //    "Install-Package MailKit -ProjectName NameParser.UI\n\n" +
             //    "See CHALLENGE_MAILING_INSTALLATION_GUIDE.md for complete setup instructions.");
 //#endif
+        }
+
+        private string GenerateDetailedClassificationPdf()
+        {
+            try
+            {
+                if (SelectedChallenge == null)
+                {
+                    throw new InvalidOperationException("No challenge selected");
+                }
+
+                var challengerClassifications = _classificationRepository.GetChallengerClassificationByChallenge(SelectedChallenge.Id)
+                    .OrderBy(c => c.RankByPoints)
+                    .ToList();
+
+                // Create temp directory if it doesn't exist
+                var tempDir = Path.Combine(Path.GetTempPath(), "ChallengeMailingPdfs");
+                if (!Directory.Exists(tempDir))
+                {
+                    Directory.CreateDirectory(tempDir);
+                }
+
+                var fileName = $"Classement_{SelectedChallenge.Name.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+                var filePath = Path.Combine(tempDir, fileName);
+
+                QuestPDF.Settings.License = LicenseType.Community;
+
+                QuestPDF.Fluent.Document.Create(container =>
+                {
+                    container.Page(page =>
+                    {
+                        page.Size(PageSizes.A4);
+                        page.Margin(2, Unit.Centimetre);
+                        page.PageColor(Colors.White);
+                        page.DefaultTextStyle(x => x.FontSize(9));
+
+                        page.Header()
+                            .Column(column =>
+                            {
+                                column.Item().Text($"🏆 {SelectedChallenge.Name} - Classement Détaillé")
+                                    .FontSize(18)
+                                    .Bold()
+                                    .FontColor(Colors.Orange.Darken1);
+
+                                column.Item().PaddingTop(5).Text($"Année: {SelectedChallenge.Year}")
+                                    .FontSize(10);
+
+                                column.Item().Text($"Généré le: {DateTime.Now:dd/MM/yyyy HH:mm}")
+                                    .FontSize(8)
+                                    .FontColor(Colors.Grey.Darken1);
+                            });
+
+                        page.Content()
+                            .PaddingTop(0.5f, Unit.Centimetre)
+                            .Column(column =>
+                            {
+                                foreach (var challenger in challengerClassifications)
+                                {
+                                    column.Item().PageBreak();
+
+                                    // Challenger header
+                                    column.Item()
+                                        .PaddingBottom(10)
+                                        .Row(row =>
+                                        {
+                                            row.RelativeItem().Column(col =>
+                                            {
+                                                col.Item().Text($"#{challenger.RankByPoints} - {challenger.ChallengerFirstName} {challenger.ChallengerLastName.ToUpper()}")
+                                                    .FontSize(14)
+                                                    .Bold()
+                                                    .FontColor(Colors.Orange.Darken1);
+
+                                                col.Item().PaddingTop(5).Text(text =>
+                                                {
+                                                    text.Span("Points: ").Bold();
+                                                    text.Span($"{challenger.TotalPoints}").FontColor(Colors.Orange.Darken1).Bold();
+                                                    text.Span("  |  ");
+                                                    text.Span("Courses: ").Bold();
+                                                    text.Span($"{challenger.RaceCount}");
+                                                    text.Span("  |  ");
+                                                    text.Span("Total KMs: ").Bold();
+                                                    text.Span($"{challenger.TotalKilometers} km");
+                                                });
+
+                                                if (!string.IsNullOrEmpty(challenger.Team))
+                                                {
+                                                    col.Item().Text($"Équipe: {challenger.Team}")
+                                                        .Italic()
+                                                        .FontColor(Colors.Grey.Darken1);
+                                                }
+                                            });
+                                        });
+
+                                    // Race details table
+                                    column.Item().Table(table =>
+                                    {
+                                        // Define columns
+                                        table.ColumnsDefinition(columns =>
+                                        {
+                                            columns.ConstantColumn(30);  // Race #
+                                            columns.RelativeColumn(2);   // Race Name
+                                            columns.ConstantColumn(50);  // Distance
+                                            columns.ConstantColumn(40);  // Position
+                                            columns.ConstantColumn(40);  // Points
+                                            columns.ConstantColumn(40);  // Bonus
+                                            columns.ConstantColumn(45);  // In Best 7
+                                        });
+
+                                        // Header
+                                        table.Header(header =>
+                                        {
+                                            header.Cell().Element(HeaderCellStyle).Text("#").Bold().FontSize(8);
+                                            header.Cell().Element(HeaderCellStyle).Text("Course").Bold().FontSize(8);
+                                            header.Cell().Element(HeaderCellStyle).Text("Dist.").Bold().FontSize(8);
+                                            header.Cell().Element(HeaderCellStyle).Text("Pos.").Bold().FontSize(8);
+                                            header.Cell().Element(HeaderCellStyle).Text("Pts").Bold().FontSize(8);
+                                            header.Cell().Element(HeaderCellStyle).Text("Bonus").Bold().FontSize(8);
+                                            header.Cell().Element(HeaderCellStyle).Text("Best 7").Bold().FontSize(8);
+
+                                            static IContainer HeaderCellStyle(IContainer container)
+                                            {
+                                                return container
+                                                    .Background(Colors.Blue.Lighten3)
+                                                    .Padding(3)
+                                                    .BorderBottom(1)
+                                                    .BorderColor(Colors.Blue.Darken1);
+                                            }
+                                        });
+
+                                        // Data rows
+                                        foreach (var raceDetail in challenger.RaceDetails)
+                                        {
+                                            var bgColor = raceDetail.IsInBest7 ? Colors.Green.Lighten4 : Colors.White;
+
+                                            table.Cell().Background(bgColor).Padding(3).Text(raceDetail.RaceNumber.ToString()).FontSize(8);
+                                            table.Cell().Background(bgColor).Padding(3).Text(raceDetail.RaceName).FontSize(8);
+                                            table.Cell().Background(bgColor).Padding(3).Text($"{raceDetail.DistanceKm} km").FontSize(8);
+                                            table.Cell().Background(bgColor).Padding(3).Text(raceDetail.Position.ToString()).FontSize(8);
+
+                                            var pointsCell = table.Cell().Background(bgColor).Padding(3).Text(raceDetail.Points.ToString()).FontSize(8);
+                                            if (raceDetail.IsInBest7)
+                                            {
+                                                pointsCell.Bold();
+                                            }
+
+                                            table.Cell().Background(bgColor).Padding(3).Text(raceDetail.BonusKm.ToString()).FontSize(8);
+                                            table.Cell().Background(bgColor).Padding(3).Text(raceDetail.IsInBest7 ? "✓" : "").FontSize(8);
+                                        }
+                                    });
+
+                                    column.Item().PaddingTop(10); // Spacing between challengers
+                                }
+                            });
+
+                        page.Footer()
+                            .AlignCenter()
+                            .Text(text =>
+                            {
+                                text.Span("Page ");
+                                text.CurrentPageNumber();
+                                text.Span(" / ");
+                                text.TotalPages();
+                            });
+                    });
+                })
+                .GeneratePdf(filePath);
+
+                return filePath;
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error generating PDF: {ex.Message}";
+                throw;
+            }
         }
 
         private void LoadGmailSettings()
