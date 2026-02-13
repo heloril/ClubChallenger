@@ -18,9 +18,14 @@ using NameParser.Infrastructure.Services;
 using NameParser.UI.Services;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
-using DocumentFormat.OpenXml.Wordprocessing;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+using WordDocument = DocumentFormat.OpenXml.Wordprocessing.Document;
+using WordColor = DocumentFormat.OpenXml.Wordprocessing.Color;
+using DocumentFormat.OpenXml.Wordprocessing;
 
 namespace NameParser.UI.ViewModels
 {
@@ -104,9 +109,11 @@ namespace NameParser.UI.ViewModels
             ExportChallengerSummaryHtmlCommand = new RelayCommand(ExecuteExportChallengerSummaryHtml, CanExecuteExportChallengerClassification);
             ExportChallengerSummaryExcelCommand = new RelayCommand(ExecuteExportChallengerSummaryExcel, CanExecuteExportChallengerClassification);
             ExportChallengerSummaryWordCommand = new RelayCommand(ExecuteExportChallengerSummaryWord, CanExecuteExportChallengerClassification);
+            ExportChallengerSummaryPdfCommand = new RelayCommand(ExecuteExportChallengerSummaryPdf, CanExecuteExportChallengerClassification);
             ExportChallengerDetailedHtmlCommand = new RelayCommand(ExecuteExportChallengerDetailedHtml, CanExecuteExportChallengerClassification);
             ExportChallengerDetailedExcelCommand = new RelayCommand(ExecuteExportChallengerDetailedExcel, CanExecuteExportChallengerClassification);
             ExportChallengerDetailedWordCommand = new RelayCommand(ExecuteExportChallengerDetailedWord, CanExecuteExportChallengerClassification);
+            ExportChallengerDetailedPdfCommand = new RelayCommand(ExecuteExportChallengerDetailedPdf, CanExecuteExportChallengerClassification);
 
             // Export commands for Race Classification
             ExportToHtmlCommand = new RelayCommand(ExecuteExportToHtml, CanExecuteExport);
@@ -349,9 +356,11 @@ namespace NameParser.UI.ViewModels
         public ICommand ExportChallengerSummaryHtmlCommand { get; }
         public ICommand ExportChallengerSummaryExcelCommand { get; }
         public ICommand ExportChallengerSummaryWordCommand { get; }
+        public ICommand ExportChallengerSummaryPdfCommand { get; }
         public ICommand ExportChallengerDetailedHtmlCommand { get; }
         public ICommand ExportChallengerDetailedExcelCommand { get; }
         public ICommand ExportChallengerDetailedWordCommand { get; }
+        public ICommand ExportChallengerDetailedPdfCommand { get; }
 
         public ICommand ShowRaceClassificationCommand { get; }
         public ICommand ShowOnlyMembersCommand { get; }
@@ -1046,7 +1055,7 @@ namespace NameParser.UI.ViewModels
             {
                 // Add a main document part
                 MainDocumentPart mainPart = wordDocument.AddMainDocumentPart();
-                mainPart.Document = new Document();
+                mainPart.Document = new WordDocument();
                 Body body = mainPart.Document.AppendChild(new Body());
 
                 // Title
@@ -1234,7 +1243,7 @@ namespace NameParser.UI.ViewModels
             {
                 run.RunProperties = new RunProperties();
             }
-            run.RunProperties.Append(new Color() { Val = hexColor });
+            run.RunProperties.Append(new WordColor() { Val = hexColor });
         }
 
         private TableCell CreateHeaderCell(string text)
@@ -1258,7 +1267,7 @@ namespace NameParser.UI.ViewModels
             // Format: Bold and white color
             RunProperties runProps = new RunProperties(
                 new Bold(),
-                new Color() { Val = "FFFFFF" }
+                new WordColor() { Val = "FFFFFF" }
             );
             run.RunProperties = runProps;
 
@@ -3176,7 +3185,7 @@ namespace NameParser.UI.ViewModels
             using (var document = WordprocessingDocument.Create(filePath, WordprocessingDocumentType.Document))
             {
                 var mainPart = document.AddMainDocumentPart();
-                mainPart.Document = new Document();
+                mainPart.Document = new WordDocument();
                 var body = mainPart.Document.AppendChild(new Body());
 
                 var filterDesc = BuildFilterDescription();
@@ -3519,6 +3528,62 @@ namespace NameParser.UI.ViewModels
             }
         }
 
+        private void ExecuteExportChallengerSummaryPdf(object parameter)
+        {
+            if (!CanExecuteExportChallengerClassification(parameter)) return;
+
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "PDF Files (*.pdf)|*.pdf|All Files (*.*)|*.*",
+                    DefaultExt = "pdf",
+                    FileName = $"{SelectedChallengeForClassification.Name.Replace(" ", "_")}_Summary_{DateTime.Now:yyyyMMdd}.pdf"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    ExportChallengerSummaryToPdf(saveFileDialog.FileName);
+                    StatusMessage = $"Summary exported to PDF: {Path.GetFileName(saveFileDialog.FileName)}";
+                    MessageBox.Show($"Summary exported successfully!\n\nFile: {saveFileDialog.FileName}",
+                        "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error exporting summary: {ex.Message}";
+                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExecuteExportChallengerDetailedPdf(object parameter)
+        {
+            if (!CanExecuteExportChallengerClassification(parameter)) return;
+
+            try
+            {
+                var saveFileDialog = new SaveFileDialog
+                {
+                    Filter = "PDF Files (*.pdf)|*.pdf|All Files (*.*)|*.*",
+                    DefaultExt = "pdf",
+                    FileName = $"{SelectedChallengeForClassification.Name.Replace(" ", "_")}_Detailed_{DateTime.Now:yyyyMMdd}.pdf"
+                };
+
+                if (saveFileDialog.ShowDialog() == true)
+                {
+                    ExportChallengerDetailedToPdf(saveFileDialog.FileName);
+                    StatusMessage = $"Detailed view exported to PDF: {Path.GetFileName(saveFileDialog.FileName)}";
+                    MessageBox.Show($"Detailed view exported successfully!\n\nFile: {saveFileDialog.FileName}",
+                        "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error exporting detailed view: {ex.Message}";
+                MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         // Summary Export Implementations
 
         private void ExportChallengerSummaryToHtml(string filePath)
@@ -3664,7 +3729,7 @@ namespace NameParser.UI.ViewModels
             using (var document = WordprocessingDocument.Create(filePath, WordprocessingDocumentType.Document))
             {
                 var mainPart = document.AddMainDocumentPart();
-                mainPart.Document = new Document();
+                mainPart.Document = new WordDocument();
                 var body = mainPart.Document.AppendChild(new Body());
 
                 // Title
@@ -3797,7 +3862,7 @@ namespace NameParser.UI.ViewModels
             using (var document = WordprocessingDocument.Create(filePath, WordprocessingDocumentType.Document))
             {
                 var mainPart = document.AddMainDocumentPart();
-                mainPart.Document = new Document();
+                mainPart.Document = new WordDocument();
                 var body = mainPart.Document.AppendChild(new Body());
 
                 // Title
@@ -3855,6 +3920,252 @@ namespace NameParser.UI.ViewModels
                 mainPart.Document.Save();
             }
         }
+
+        // PDF Export Implementations
+
+        private void ExportChallengerSummaryToPdf(string filePath)
+        {
+            var challengeName = SelectedChallengeForClassification?.Name ?? "Challenge";
+            var challengeYear = SelectedChallengeForClassification?.Year ?? SelectedYear;
+
+            QuestPDF.Settings.License = LicenseType.Community;
+
+            QuestPDF.Fluent.Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(PageSizes.A4);
+                    page.Margin(2, Unit.Centimetre);
+                    page.PageColor(Colors.White);
+                    page.DefaultTextStyle(x => x.FontSize(10));
+
+                    page.Header()
+                        .Column(column =>
+                        {
+                            column.Item().Text($"🏆 {challengeName} - Summary")
+                                .FontSize(20)
+                                .Bold()
+                                .FontColor(Colors.Orange.Darken1);
+
+                            column.Item().PaddingTop(5).Row(row =>
+                            {
+                                row.RelativeItem().Text($"Year: {challengeYear}");
+                                row.RelativeItem().AlignRight().Text($"Total Challengers: {ChallengerClassifications.Count}");
+                            });
+
+                            column.Item().PaddingTop(2).Text($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm}")
+                                .FontSize(8)
+                                .FontColor(Colors.Grey.Darken1);
+                        });
+
+                    page.Content()
+                        .PaddingTop(1, Unit.Centimetre)
+                        .Table(table =>
+                        {
+                            // Define columns
+                            table.ColumnsDefinition(columns =>
+                            {
+                                columns.ConstantColumn(40);  // Rank
+                                columns.RelativeColumn(3);   // Name
+                                columns.ConstantColumn(60);  // Points
+                                columns.ConstantColumn(50);  // Races
+                                columns.ConstantColumn(60);  // KMs
+                            });
+
+                            // Header
+                            table.Header(header =>
+                            {
+                                header.Cell().Element(CellStyle).Text("Rank").Bold();
+                                header.Cell().Element(CellStyle).Text("Name").Bold();
+                                header.Cell().Element(CellStyle).Text("Points").Bold();
+                                header.Cell().Element(CellStyle).Text("Races").Bold();
+                                header.Cell().Element(CellStyle).Text("Total KMs").Bold();
+
+                                static IContainer CellStyle(IContainer container)
+                                {
+                                    return container
+                                        .Background(Colors.Orange.Lighten2)
+                                        .Padding(5)
+                                        .BorderBottom(1)
+                                        .BorderColor(Colors.Orange.Darken1);
+                                }
+                            });
+
+                            // Data rows
+                            foreach (var challenger in ChallengerClassifications)
+                            {
+                                var isEven = challenger.RankByPoints % 2 == 0;
+                                var bgColor = isEven ? Colors.Grey.Lighten4 : Colors.White;
+
+                                table.Cell().Background(bgColor).Padding(5).Text($"#{challenger.RankByPoints}").FontColor(Colors.Orange.Darken1).Bold();
+                                table.Cell().Background(bgColor).Padding(5).Text($"{challenger.ChallengerFirstName} {challenger.ChallengerLastName.ToUpper()}");
+                                table.Cell().Background(bgColor).Padding(5).Text(challenger.TotalPoints.ToString()).Bold();
+                                table.Cell().Background(bgColor).Padding(5).Text(challenger.RaceCount.ToString());
+                                table.Cell().Background(bgColor).Padding(5).Text($"{challenger.TotalKilometers} km");
+                            }
+                        });
+
+                    page.Footer()
+                        .AlignCenter()
+                        .Text(text =>
+                        {
+                            text.Span("Page ");
+                            text.CurrentPageNumber();
+                            text.Span(" / ");
+                            text.TotalPages();
+                        });
+                });
+            })
+            .GeneratePdf(filePath);
+        }
+
+        private void ExportChallengerDetailedToPdf(string filePath)
+        {
+            var challengeName = SelectedChallengeForClassification?.Name ?? "Challenge";
+            var challengeYear = SelectedChallengeForClassification?.Year ?? SelectedYear;
+
+            QuestPDF.Settings.License = LicenseType.Community;
+
+            QuestPDF.Fluent.Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(PageSizes.A4);
+                    page.Margin(2, Unit.Centimetre);
+                    page.PageColor(Colors.White);
+                    page.DefaultTextStyle(x => x.FontSize(9));
+
+                    page.Header()
+                        .Column(column =>
+                        {
+                            column.Item().Text($"🏆 {challengeName} - Detailed Results")
+                                .FontSize(18)
+                                .Bold()
+                                .FontColor(Colors.Orange.Darken1);
+
+                            column.Item().PaddingTop(5).Text($"Year: {challengeYear}")
+                                .FontSize(10);
+
+                            column.Item().Text($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm}")
+                                .FontSize(8)
+                                .FontColor(Colors.Grey.Darken1);
+                        });
+
+                    page.Content()
+                        .PaddingTop(0.5f, Unit.Centimetre)
+                        .Column(column =>
+                        {
+                            foreach (var challenger in ChallengerClassifications)
+                            {
+                                column.Item().PageBreak();
+
+                                // Challenger header
+                                column.Item()
+                                    .PaddingBottom(10)
+                                    .Row(row =>
+                                    {
+                                        row.RelativeItem().Column(col =>
+                                        {
+                                            col.Item().Text($"#{challenger.RankByPoints} - {challenger.ChallengerFirstName} {challenger.ChallengerLastName.ToUpper()}")
+                                                .FontSize(14)
+                                                .Bold()
+                                                .FontColor(Colors.Orange.Darken1);
+
+                                            col.Item().PaddingTop(5).Text(text =>
+                                            {
+                                                text.Span("Points: ").Bold();
+                                                text.Span($"{challenger.TotalPoints}").FontColor(Colors.Orange.Darken1).Bold();
+                                                text.Span("  |  ");
+                                                text.Span("Races: ").Bold();
+                                                text.Span($"{challenger.RaceCount}");
+                                                text.Span("  |  ");
+                                                text.Span("Total KMs: ").Bold();
+                                                text.Span($"{challenger.TotalKilometers} km");
+                                            });
+
+                                            if (!string.IsNullOrEmpty(challenger.Team))
+                                            {
+                                                col.Item().Text($"Team: {challenger.Team}")
+                                                    .Italic()
+                                                    .FontColor(Colors.Grey.Darken1);
+                                            }
+                                        });
+                                    });
+
+                                // Race details table
+                                column.Item().Table(table =>
+                                {
+                                    // Define columns
+                                    table.ColumnsDefinition(columns =>
+                                    {
+                                        columns.ConstantColumn(30);  // Race #
+                                        columns.RelativeColumn(2);   // Race Name
+                                        columns.ConstantColumn(50);  // Distance
+                                        columns.ConstantColumn(40);  // Position
+                                        columns.ConstantColumn(40);  // Points
+                                        columns.ConstantColumn(40);  // Bonus
+                                        columns.ConstantColumn(45);  // In Best 7
+                                    });
+
+                                    // Header
+                                    table.Header(header =>
+                                    {
+                                        header.Cell().Element(HeaderCellStyle).Text("#").Bold().FontSize(8);
+                                        header.Cell().Element(HeaderCellStyle).Text("Race").Bold().FontSize(8);
+                                        header.Cell().Element(HeaderCellStyle).Text("Dist.").Bold().FontSize(8);
+                                        header.Cell().Element(HeaderCellStyle).Text("Pos.").Bold().FontSize(8);
+                                        header.Cell().Element(HeaderCellStyle).Text("Pts").Bold().FontSize(8);
+                                        header.Cell().Element(HeaderCellStyle).Text("Bonus").Bold().FontSize(8);
+                                        header.Cell().Element(HeaderCellStyle).Text("Best 7").Bold().FontSize(8);
+
+                                        static IContainer HeaderCellStyle(IContainer container)
+                                        {
+                                            return container
+                                                .Background(Colors.Blue.Lighten3)
+                                                .Padding(3)
+                                                .BorderBottom(1)
+                                                .BorderColor(Colors.Blue.Darken1);
+                                        }
+                                    });
+
+                                    // Data rows
+                                    foreach (var raceDetail in challenger.RaceDetails)
+                                    {
+                                        var bgColor = raceDetail.IsInBest7 ? Colors.Green.Lighten4 : Colors.White;
+
+                                        table.Cell().Background(bgColor).Padding(3).Text(raceDetail.RaceNumber.ToString()).FontSize(8);
+                                        table.Cell().Background(bgColor).Padding(3).Text(raceDetail.RaceName).FontSize(8);
+                                        table.Cell().Background(bgColor).Padding(3).Text($"{raceDetail.DistanceKm} km").FontSize(8);
+                                        table.Cell().Background(bgColor).Padding(3).Text(raceDetail.Position.ToString()).FontSize(8);
+
+                                        var pointsCell = table.Cell().Background(bgColor).Padding(3).Text(raceDetail.Points.ToString()).FontSize(8);
+                                        if (raceDetail.IsInBest7)
+                                        {
+                                            pointsCell.Bold();
+                                        }
+
+                                        table.Cell().Background(bgColor).Padding(3).Text(raceDetail.BonusKm.ToString()).FontSize(8);
+                                        table.Cell().Background(bgColor).Padding(3).Text(raceDetail.IsInBest7 ? "✓" : "").FontSize(8);
+                                    }
+                                });
+
+                                column.Item().PaddingTop(10); // Spacing between challengers
+                            }
+                        });
+
+                    page.Footer()
+                        .AlignCenter()
+                        .Text(text =>
+                        {
+                            text.Span("Page ");
+                            text.CurrentPageNumber();
+                            text.Span(" / ");
+                            text.TotalPages();
+                        });
+                });
+            })
+            .GeneratePdf(filePath);
+        }
     }
 
     public class LanguageOption
@@ -3863,3 +4174,5 @@ namespace NameParser.UI.ViewModels
         public string DisplayName { get; set; }
     }
 }
+
+

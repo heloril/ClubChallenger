@@ -15,6 +15,7 @@
     <PackageReference Include="Microsoft.VisualBasic" Version="10.3.0" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3719.77" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="QuestPDF" Version="2025.12.4" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NameParser\NameParser.csproj" />

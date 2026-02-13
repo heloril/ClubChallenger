@@ -444,6 +444,11 @@
                                                     <TextBlock Text="Export summary document for printing"/>
                                                 </MenuItem.ToolTip>
                                             </MenuItem>
+                                            <MenuItem Header="📊 Summary (PDF)" Command="{Binding ExportChallengerSummaryPdfCommand}">
+                                                <MenuItem.ToolTip>
+                                                    <TextBlock Text="Export summary as PDF for easy sharing and printing"/>
+                                                </MenuItem.ToolTip>
+                                            </MenuItem>
                                             <Separator/>
                                             <MenuItem Header="📋 Detailed (HTML)" Command="{Binding ExportChallengerDetailedHtmlCommand}">
                                                 <MenuItem.ToolTip>
@@ -458,6 +463,11 @@
                                             <MenuItem Header="📋 Detailed (Word)" Command="{Binding ExportChallengerDetailedWordCommand}">
                                                 <MenuItem.ToolTip>
                                                     <TextBlock Text="Export complete document with race-by-race breakdown"/>
+                                                </MenuItem.ToolTip>
+                                            </MenuItem>
+                                            <MenuItem Header="📋 Detailed (PDF)" Command="{Binding ExportChallengerDetailedPdfCommand}">
+                                                <MenuItem.ToolTip>
+                                                    <TextBlock Text="Export complete PDF with race-by-race breakdown"/>
                                                 </MenuItem.ToolTip>
                                             </MenuItem>
                                         </ContextMenu>
