@@ -1179,6 +1179,179 @@
                 </Grid>
             </TabItem>
 
+            <!-- Database Backup Tab -->
+            <TabItem Header="💾 Database Backup">
+                <Grid Margin="20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Database Information -->
+                    <GroupBox Grid.Row="0" Header="Database Information" Margin="0,0,0,10">
+                        <Border Background="#E3F2FD" Padding="15" CornerRadius="5">
+                            <StackPanel>
+                                <TextBlock Text="{Binding DatabaseBackupViewModel.DatabaseInfo}" 
+                                          FontFamily="Consolas" 
+                                          FontSize="12"
+                                          TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                    </GroupBox>
+
+                    <!-- Backup Location -->
+                    <GroupBox Grid.Row="1" Header="Backup Location" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBox Grid.Column="0" 
+                                    Text="{Binding DatabaseBackupViewModel.BackupLocation, UpdateSourceTrigger=PropertyChanged}"
+                                    IsReadOnly="True"
+                                    Background="#F5F5F5"
+                                    Margin="5"/>
+
+                            <Button Grid.Column="1" 
+                                   Content="📁 Browse..." 
+                                   Command="{Binding DatabaseBackupViewModel.BrowseBackupLocationCommand}"
+                                   Width="100"
+                                   Margin="5"/>
+
+                            <Button Grid.Column="2" 
+                                   Content="📂 Open Folder" 
+                                   Command="{Binding DatabaseBackupViewModel.OpenBackupFolderCommand}"
+                                   Width="110"
+                                   Margin="5"
+                                   Background="#2196F3"
+                                   Foreground="White"/>
+                        </Grid>
+                    </GroupBox>
+
+                    <!-- Backup Actions -->
+                    <GroupBox Grid.Row="2" Header="Backup Management" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Action Buttons -->
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="5">
+                                <Button Content="💾 Create Backup" 
+                                       Command="{Binding DatabaseBackupViewModel.CreateBackupCommand}"
+                                       Background="#4CAF50"
+                                       Foreground="White"
+                                       FontWeight="Bold"
+                                       Height="40"
+                                       Width="140"
+                                       Margin="0,0,10,0"
+                                       ToolTip="Create a new backup of the database"/>
+
+                                <Button Content="🔄 Restore Backup" 
+                                       Command="{Binding DatabaseBackupViewModel.RestoreBackupCommand}"
+                                       Background="#FF9800"
+                                       Foreground="White"
+                                       FontWeight="Bold"
+                                       Height="40"
+                                       Width="140"
+                                       Margin="0,0,10,0"
+                                       ToolTip="Restore database from selected backup"/>
+
+                                <Button Content="🔃 Refresh List" 
+                                       Command="{Binding DatabaseBackupViewModel.RefreshBackupListCommand}"
+                                       Width="120"
+                                       Height="40"
+                                       Margin="0,0,10,0"
+                                       ToolTip="Refresh the backup file list"/>
+
+                                <Button Content="🗑️ Delete Backup" 
+                                       Command="{Binding DatabaseBackupViewModel.DeleteBackupCommand}"
+                                       Background="#F44336"
+                                       Foreground="White"
+                                       Height="40"
+                                       Width="120"
+                                       ToolTip="Delete the selected backup file"/>
+                            </StackPanel>
+
+                            <!-- Backup Files List -->
+                            <DataGrid Grid.Row="1" 
+                                     ItemsSource="{Binding DatabaseBackupViewModel.BackupFiles}"
+                                     SelectedValue="{Binding DatabaseBackupViewModel.SelectedBackupFile}"
+                                     SelectedValuePath="FullPath"
+                                     AutoGenerateColumns="False"
+                                     IsReadOnly="True"
+                                     AlternatingRowBackground="#F5F5F5"
+                                     Margin="5">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="File Name" Binding="{Binding FileName}" Width="*" MinWidth="200"/>
+                                    <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="100"/>
+                                    <DataGridTextColumn Header="Created" Binding="{Binding CreatedDate}" Width="150"/>
+                                    <DataGridTextColumn Header="Age" Binding="{Binding Age}" Width="80"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <!-- Help Text -->
+                            <Border Grid.Row="2" 
+                                   Background="#FFF3E0" 
+                                   Padding="15" 
+                                   Margin="5"
+                                   CornerRadius="5">
+                                <StackPanel>
+                                    <TextBlock FontWeight="Bold" Margin="0,0,0,5">
+                                        <Run Text="ℹ️ Important Information"/>
+                                    </TextBlock>
+                                    <TextBlock TextWrapping="Wrap" FontSize="11">
+                                        <Run Text="• "/>
+                                        <Run Text="Create Backup: " FontWeight="Bold"/>
+                                        <Run Text="Creates a complete backup of your database. This is safe and can be done anytime."/>
+                                        <LineBreak/>
+                                        <Run Text="• "/>
+                                        <Run Text="Restore Backup: " FontWeight="Bold"/>
+                                        <Run Text="Replaces the current database with the selected backup. An automatic backup is created before restore."/>
+                                        <LineBreak/>
+                                        <Run Text="• "/>
+                                        <Run Text="Backup Location: " FontWeight="Bold"/>
+                                        <Run Text="All backup files are stored in the specified folder. You can change this location at any time."/>
+                                        <LineBreak/>
+                                        <Run Text="• "/>
+                                        <Run Text="Best Practice: " FontWeight="Bold"/>
+                                        <Run Text="Create regular backups, especially before major data operations or updates."/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </GroupBox>
+
+                    <!-- Status Message -->
+                    <Border Grid.Row="3" 
+                           Background="#E0E0E0" 
+                           Padding="10" 
+                           CornerRadius="5"
+                           Margin="5,0,5,0">
+                        <Grid>
+                            <TextBlock Text="{Binding DatabaseBackupViewModel.StatusMessage}" 
+                                      FontStyle="Italic"
+                                      Foreground="#666"
+                                      VerticalAlignment="Center"/>
+
+                            <StackPanel Orientation="Horizontal" 
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       Visibility="{Binding DatabaseBackupViewModel.IsProcessing, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <ProgressBar IsIndeterminate="True" Width="100" Height="20" Margin="0,0,10,0"/>
+                                <TextBlock Text="Processing..." FontStyle="Italic" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
 
                                     </TabControl>
 
