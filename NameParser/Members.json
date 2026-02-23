@@ -893,5 +893,25 @@
         "FirstName":  "Remy",
         "LastName":  "Samyn",
         "Email":  "remysamyn1986@gmail.com"
-    }
+    },
+	{
+		"FirstName": "Florence",
+		"LastName": "Somja",
+		"Email": "florencesomja@hotmail.com"
+	},
+	{
+		"FirstName": "Alix",
+		"LastName": "Melis",
+		"Email": "Alix Melis<melisalix92@gmail.com>"
+	},
+	{
+		"FirstName": "Arthur",
+		"LastName": "Bertholome",
+		"Email": "arthurbertholome@outlook.com"
+	},
+	{
+		"FirstName": "Genevieve",
+		"LastName": "Gilles",
+		"Email": "genegilles@yahoo.fr"
+	}
 ]
