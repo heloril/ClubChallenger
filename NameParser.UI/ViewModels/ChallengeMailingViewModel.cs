@@ -32,6 +32,7 @@ namespace NameParser.UI.ViewModels
         private readonly RaceRepository _raceRepository;
         private readonly ClassificationRepository _classificationRepository;
         private readonly JsonMemberRepository _memberRepository;
+        private readonly EmailLogRepository _emailLogRepository;
         private readonly IConfiguration _configuration;
         private readonly LocalizationService _localization;
 
@@ -41,6 +42,7 @@ namespace NameParser.UI.ViewModels
         private string _testEmailAddress;
         private string _statusMessage;
         private bool _isSending;
+        private EmailRecipientInfo _selectedRecipient;
 
         // Gmail Configuration (read-only from appsettings.json)
         private string _gmailAddress;
@@ -55,6 +57,7 @@ namespace NameParser.UI.ViewModels
             _raceRepository = new RaceRepository();
             _classificationRepository = new ClassificationRepository();
             _memberRepository = new JsonMemberRepository();
+            _emailLogRepository = new EmailLogRepository();
             _localization = LocalizationService.Instance;
 
             // Load configuration from appsettings.json
@@ -64,17 +67,21 @@ namespace NameParser.UI.ViewModels
                 .Build();
 
             Challenges = new ObservableCollection<ChallengeEntity>();
+            Recipients = new ObservableCollection<EmailRecipientInfo>();
 
             LoadChallengesCommand = new RelayCommand(ExecuteLoadChallenges);
             GenerateTemplateCommand = new RelayCommand(ExecuteGenerateTemplate, CanExecuteGenerateTemplate);
             SendTestEmailCommand = new RelayCommand(ExecuteSendTestEmail, CanExecuteSendTestEmail);
             SendToAllChallengersCommand = new RelayCommand(ExecuteSendToAllChallengers, CanExecuteSendToAllChallengers);
+            LoadRecipientsCommand = new RelayCommand(ExecuteLoadRecipients, CanExecuteLoadRecipients);
+            ResendToSelectedCommand = new RelayCommand(ExecuteResendToSelected, CanExecuteResendToSelected);
 
             LoadChallenges();
             LoadGmailSettings();
         }
 
         public ObservableCollection<ChallengeEntity> Challenges { get; }
+        public ObservableCollection<EmailRecipientInfo> Recipients { get; }
 
         public ChallengeEntity SelectedChallenge
         {
@@ -86,6 +93,20 @@ namespace NameParser.UI.ViewModels
                     ((RelayCommand)GenerateTemplateCommand).RaiseCanExecuteChanged();
                     ((RelayCommand)SendTestEmailCommand).RaiseCanExecuteChanged();
                     ((RelayCommand)SendToAllChallengersCommand).RaiseCanExecuteChanged();
+                    ((RelayCommand)LoadRecipientsCommand).RaiseCanExecuteChanged();
+                    ExecuteLoadRecipients(null);
+                }
+            }
+        }
+
+        public EmailRecipientInfo SelectedRecipient
+        {
+            get => _selectedRecipient;
+            set
+            {
+                if (SetProperty(ref _selectedRecipient, value))
+                {
+                    ((RelayCommand)ResendToSelectedCommand).RaiseCanExecuteChanged();
                 }
             }
         }
@@ -155,6 +176,8 @@ namespace NameParser.UI.ViewModels
         public ICommand SendTestEmailCommand { get; }
         public ICommand SendToAllChallengersCommand { get; }
         public ICommand SaveGmailSettingsCommand { get; }
+        public ICommand LoadRecipientsCommand { get; }
+        public ICommand ResendToSelectedCommand { get; }
 
         private void ExecuteLoadChallenges(object parameter)
         {
@@ -176,6 +199,143 @@ namespace NameParser.UI.ViewModels
             catch (Exception ex)
             {
                 StatusMessage = $"Error loading challenges: {ex.Message}";
+            }
+        }
+
+        private bool CanExecuteLoadRecipients(object parameter)
+        {
+            return SelectedChallenge != null;
+        }
+
+        private void ExecuteLoadRecipients(object parameter)
+        {
+            try
+            {
+                Recipients.Clear();
+
+                // Read challengers from Challenge.json
+                var challengeJsonPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Challenge.json");
+
+                if (!File.Exists(challengeJsonPath))
+                {
+                    StatusMessage = "Challenge.json file not found.";
+                    return;
+                }
+
+                var jsonContent = File.ReadAllText(challengeJsonPath);
+                var challengers = System.Text.Json.JsonSerializer.Deserialize<List<ChallengerRegistration>>(jsonContent);
+
+                if (challengers == null || !challengers.Any())
+                {
+                    StatusMessage = "No challengers found in Challenge.json.";
+                    return;
+                }
+
+                // Get unique emails
+                var challengerEmails = challengers
+                    .Where(c => !string.IsNullOrWhiteSpace(c.Email))
+                    .GroupBy(c => c.Email.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .Select(g => new
+                    {
+                        Email = g.Key,
+                        Name = $"{g.First().FirstName} {g.First().LastName}"
+                    })
+                    .ToList();
+
+                // Get last email log for each recipient
+                foreach (var challenger in challengerEmails)
+                {
+                    var lastLog = _emailLogRepository.GetLastEmailLog(challenger.Email, "Challenge", SelectedChallenge.Id);
+
+                    var recipientInfo = new EmailRecipientInfo
+                    {
+                        Email = challenger.Email,
+                        Name = challenger.Name,
+                        Status = lastLog == null ? "Pending" : (lastLog.IsSuccess ? "Sent" : "Failed"),
+                        LastSentDate = lastLog?.SentDate,
+                        LastError = lastLog?.ErrorMessage
+                    };
+
+                    Recipients.Add(recipientInfo);
+                }
+
+                StatusMessage = $"Loaded {Recipients.Count} recipient(s). " +
+                               $"Sent: {Recipients.Count(r => r.Status == "Sent")}, " +
+                               $"Failed: {Recipients.Count(r => r.Status == "Failed")}, " +
+                               $"Pending: {Recipients.Count(r => r.Status == "Pending")}";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error loading recipients: {ex.Message}";
+            }
+        }
+
+        private bool CanExecuteResendToSelected(object parameter)
+        {
+            return SelectedRecipient != null && 
+                   !string.IsNullOrWhiteSpace(EmailSubject) && 
+                   !string.IsNullOrWhiteSpace(EmailBody) &&
+                   !string.IsNullOrWhiteSpace(GmailAddress) &&
+                   !string.IsNullOrWhiteSpace(GmailAppPassword) &&
+                   !IsSending;
+        }
+
+        private async void ExecuteResendToSelected(object parameter)
+        {
+            if (SelectedRecipient == null) return;
+
+            var result = MessageBox.Show(
+                $"Resend email to {SelectedRecipient.Name} ({SelectedRecipient.Email})?",
+                "Confirm Resend",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes) return;
+
+            string pdfPath = null;
+            try
+            {
+                IsSending = true;
+                SelectedRecipient.Status = "Sending";
+                SelectedRecipient.IsSending = true;
+                StatusMessage = $"Generating PDF and sending to {SelectedRecipient.Email}...";
+
+                // Generate PDF
+                pdfPath = GenerateDetailedClassificationPdf();
+
+                // Send email
+                await SendEmailAsync(SelectedRecipient.Email, EmailSubject, EmailBody, pdfPath, isTest: false);
+
+                SelectedRecipient.Status = "Sent";
+                SelectedRecipient.LastSentDate = DateTime.Now;
+                SelectedRecipient.LastError = null;
+                StatusMessage = $"✅ Email successfully sent to {SelectedRecipient.Email}!";
+                MessageBox.Show($"Email successfully sent to {SelectedRecipient.Name}!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                SelectedRecipient.Status = "Failed";
+                SelectedRecipient.LastError = ex.Message;
+                StatusMessage = $"❌ Error sending to {SelectedRecipient.Email}: {ex.Message}";
+                MessageBox.Show($"Error sending email:\n\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                SelectedRecipient.IsSending = false;
+
+                // Clean up temp PDF file
+                if (!string.IsNullOrEmpty(pdfPath) && File.Exists(pdfPath))
+                {
+                    try
+                    {
+                        File.Delete(pdfPath);
+                    }
+                    catch
+                    {
+                        // Ignore cleanup errors
+                    }
+                }
+                IsSending = false;
             }
         }
 
@@ -448,7 +608,7 @@ namespace NameParser.UI.ViewModels
 
                 StatusMessage = "Sending test email with PDF attachment...";
 
-                await SendEmailAsync(TestEmailAddress, EmailSubject, EmailBody, pdfPath);
+                await SendEmailAsync(TestEmailAddress, EmailSubject, EmailBody, pdfPath, isTest: true);
 
                 StatusMessage = $"Test email sent successfully to {TestEmailAddress}!";
                 MessageBox.Show($"Test email sent successfully to {TestEmailAddress} with PDF attachment!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -549,7 +709,7 @@ namespace NameParser.UI.ViewModels
                     try
                     {
                         StatusMessage = $"Sending to {email}... ({successCount + failCount + 1}/{challengerEmails.Count})";
-                        await SendEmailAsync(email, EmailSubject, EmailBody, pdfPath);
+                        await SendEmailAsync(email, EmailSubject, EmailBody, pdfPath, isTest: false);
                         successCount++;
 
                         // Small delay to avoid rate limiting
@@ -561,6 +721,9 @@ namespace NameParser.UI.ViewModels
                         errors.Add($"{email}: {ex.Message}");
                     }
                 }
+
+                // Refresh the recipients list to show updated status
+                ExecuteLoadRecipients(null);
 
                 StatusMessage = $"Sent {successCount} email(s), {failCount} failed.";
 
@@ -608,34 +771,48 @@ namespace NameParser.UI.ViewModels
             public string Team { get; set; }
         }
 
-        private async System.Threading.Tasks.Task SendEmailAsync(string toEmail, string subject, string body, string attachmentPath = null)
+        private async System.Threading.Tasks.Task SendEmailAsync(string toEmail, string subject, string body, string attachmentPath = null, bool isTest = false)
         {
+            try
+            {
 //#if MAILKIT_INSTALLED
-            var message = new MimeMessage();
-            message.From.Add(new MailboxAddress("Challenge Lucien Campeggio", _gmailAddress));
-            message.To.Add(new MailboxAddress("", toEmail));
-            message.Subject = subject;
+                var message = new MimeMessage();
+                message.From.Add(new MailboxAddress("Challenge Lucien Campeggio", _gmailAddress));
+                message.To.Add(new MailboxAddress("", toEmail));
+                message.Subject = subject;
 
-            var bodyBuilder = new BodyBuilder
-            {
-                HtmlBody = body
-            };
+                var bodyBuilder = new BodyBuilder
+                {
+                    HtmlBody = body
+                };
 
-            // Add attachment if provided
-            if (!string.IsNullOrEmpty(attachmentPath) && File.Exists(attachmentPath))
-            {
-                bodyBuilder.Attachments.Add(attachmentPath);
-            }
+                // Add attachment if provided
+                if (!string.IsNullOrEmpty(attachmentPath) && File.Exists(attachmentPath))
+                {
+                    bodyBuilder.Attachments.Add(attachmentPath);
+                }
 
-            message.Body = bodyBuilder.ToMessageBody();
+                message.Body = bodyBuilder.ToMessageBody();
 
-            using (var client = new SmtpClient())
-            {
-                await client.ConnectAsync(_smtpServer, _smtpPort, MailKit.Security.SecureSocketOptions.StartTls);
-                await client.AuthenticateAsync(_gmailAddress, _gmailAppPassword);
-                await client.SendAsync(message);
-                await client.DisconnectAsync(true);
-            }
+                using (var client = new SmtpClient())
+                {
+                    await client.ConnectAsync(_smtpServer, _smtpPort, MailKit.Security.SecureSocketOptions.StartTls);
+                    await client.AuthenticateAsync(_gmailAddress, _gmailAppPassword);
+                    await client.SendAsync(message);
+                    await client.DisconnectAsync(true);
+                }
+
+                // Log successful email
+                _emailLogRepository.LogEmail(
+                    emailType: "Challenge",
+                    challengeId: SelectedChallenge?.Id,
+                    recipientEmail: toEmail,
+                    recipientName: null,
+                    subject: subject,
+                    isSuccess: true,
+                    errorMessage: null,
+                    isTest: isTest
+                );
 //#else
             //await System.Threading.Tasks.Task.CompletedTask;
             //throw new NotImplementedException(
@@ -644,6 +821,22 @@ namespace NameParser.UI.ViewModels
             //    "Install-Package MailKit -ProjectName NameParser.UI\n\n" +
             //    "See CHALLENGE_MAILING_INSTALLATION_GUIDE.md for complete setup instructions.");
 //#endif
+            }
+            catch (Exception ex)
+            {
+                // Log failed email
+                _emailLogRepository.LogEmail(
+                    emailType: "Challenge",
+                    challengeId: SelectedChallenge?.Id,
+                    recipientEmail: toEmail,
+                    recipientName: null,
+                    subject: subject,
+                    isSuccess: false,
+                    errorMessage: ex.Message,
+                    isTest: isTest
+                );
+                throw;
+            }
         }
 
         private string GenerateDetailedClassificationPdf()

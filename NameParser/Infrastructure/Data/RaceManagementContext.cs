@@ -22,6 +22,7 @@ namespace NameParser.Infrastructure.Data
         public DbSet<RaceEventEntity> RaceEvents { get; set; }
         public DbSet<ChallengeRaceEventEntity> ChallengeRaceEvents { get; set; }
         public DbSet<RaceEventDistanceEntity> RaceEventDistances { get; set; }
+        public DbSet<EmailLogEntity> EmailLogs { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
