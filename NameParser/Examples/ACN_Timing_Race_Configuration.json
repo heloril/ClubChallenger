@@ -1,0 +1,35 @@
+{
+  "races": [
+    {
+      "name": "Marathon de Spa 2026",
+      "number": 10,
+      "year": 2026,
+      "distanceKm": 42,
+      "source": "https://www.acn-timing.com/?lng=FR#/events/2156215316811398/ctx/20260328_spa/generic/198022_3/home/LIVEMARA3",
+      "type": "acn-timing-url"
+    },
+    {
+      "name": "10km de Liège",
+      "number": 11,
+      "year": 2026,
+      "distanceKm": 10,
+      "source": "ACN_20260405_liege_198023_1_20260405_120000.json",
+      "type": "acn-timing-json"
+    },
+    {
+      "name": "Semi-Marathon de Verviers",
+      "number": 12,
+      "year": 2026,
+      "distanceKm": 21,
+      "source": "ACN_20260412_verviers_198024_2_20260412_110000.html",
+      "type": "acn-timing-html"
+    }
+  ],
+  "notes": [
+    "ACN Timing sources can be:",
+    "1. Direct URLs (type: acn-timing-url) - will fetch results automatically",
+    "2. Cached JSON files (type: acn-timing-json) - previously downloaded JSON results",
+    "3. Cached HTML files (type: acn-timing-html) - previously downloaded HTML results",
+    "Use AcnTimingDownloadUtility to download and cache results before processing"
+  ]
+}

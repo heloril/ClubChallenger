@@ -308,17 +308,22 @@ namespace NameParser.Application.Services
                     // Find matching members
                     result.Members = FindMatchingMembers(members, resultValue);
 
-                    // If no matching members but is winner, create a dummy member entry
-                    if (result.Members.Count == 0 && !result.IsMember && individualResult[0].Equals("TWINNER", StringComparison.OrdinalIgnoreCase))
+                    // If no matching members, create a participant entry based on the row type
+                    if (result.Members.Count == 0)
                     {
-                        var nameParts = ExtractNameFromResult(individualResult);
-                        var winnerMember = new Member
+                        // TWINNER = external winner/participant, TMEM = should have matched but didn't
+                        if (individualResult[0].Equals("TWINNER", StringComparison.OrdinalIgnoreCase) ||
+                            individualResult[0].Equals("TMEM", StringComparison.OrdinalIgnoreCase))
                         {
-                            FirstName = nameParts.firstName,
-                            LastName = nameParts.lastName,
-                            Email = "winner@external.com"
-                        };
-                        result.Members.Add(winnerMember);
+                            var nameParts = ExtractNameFromResult(individualResult);
+                            var participantMember = new Member
+                            {
+                                FirstName = nameParts.firstName,
+                                LastName = nameParts.lastName,
+                                Email = "participant@external.com"
+                            };
+                            result.Members.Add(participantMember);
+                        }
                     }
 
                     result.IsValid = result.Members.Count > 0;
@@ -350,17 +355,22 @@ namespace NameParser.Application.Services
                     {
                         result.Members = FindMatchingMembers(members, resultValue);
 
-                        // If no matching members but is winner, create a dummy member entry
-                        if (result.Members.Count == 0 && !result.IsMember && individualResult[0].Equals("TWINNER", StringComparison.OrdinalIgnoreCase))
+                        // If no matching members, create a participant entry based on the row type
+                        if (result.Members.Count == 0)
                         {
-                            var nameParts = ExtractNameFromResult(individualResult);
-                            var winnerMember = new Member
+                            // TWINNER = external winner/participant, TMEM = should have matched but didn't
+                            if (individualResult[0].Equals("TWINNER", StringComparison.OrdinalIgnoreCase) ||
+                                individualResult[0].Equals("TMEM", StringComparison.OrdinalIgnoreCase))
                             {
-                                FirstName = nameParts.firstName,
-                                LastName = nameParts.lastName,
-                                Email = "winner@external.com"
-                            };
-                            result.Members.Add(winnerMember);
+                                var nameParts = ExtractNameFromResult(individualResult);
+                                var participantMember = new Member
+                                {
+                                    FirstName = nameParts.firstName,
+                                    LastName = nameParts.lastName,
+                                    Email = "participant@external.com"
+                                };
+                                result.Members.Add(participantMember);
+                            }
                         }
                     }
 
@@ -391,12 +401,31 @@ namespace NameParser.Application.Services
 
         private (string firstName, string lastName) ExtractNameFromResult(string[] individualResult)
         {
-            // Try to extract name from the result data
-            // Typical format: TWINNER;1;LastName;FirstName;... or TWINNER;1;FullName with noise;...
-            string firstName = "Winner";
-            string lastName = "External";
+            // New format: firstName and lastName are always the last 2 parts
+            // Format: TWINNER;RACETIME;1:36:20;POS;46;...;ISMEMBER;0;FirstName;LastName
+            string firstName = "External";
+            string lastName = "Participant";
 
-            // Collect potential name parts
+            // The last two non-empty parts should be firstName and lastName
+            if (individualResult.Length >= 2)
+            {
+                // Get the last two parts
+                var lastPart = individualResult[individualResult.Length - 1]?.Trim();
+                var secondLastPart = individualResult[individualResult.Length - 2]?.Trim();
+
+                // Validate they're not empty and not keywords
+                if (!string.IsNullOrWhiteSpace(secondLastPart) && 
+                    !string.IsNullOrWhiteSpace(lastPart) &&
+                    secondLastPart.Length > 1 &&
+                    lastPart.Length > 1)
+                {
+                    firstName = secondLastPart;
+                    lastName = lastPart;
+                    return (firstName, lastName);
+                }
+            }
+
+            // Fallback: try to collect name parts the old way
             var nameParts = new List<string>();
 
             for (int i = 0; i < individualResult.Length; i++)
@@ -405,7 +434,19 @@ namespace NameParser.Application.Services
                 if (!string.IsNullOrEmpty(part) &&
                     !part.Equals("TWINNER", StringComparison.OrdinalIgnoreCase) &&
                     !part.Equals("TMEM", StringComparison.OrdinalIgnoreCase) &&
+                    !part.Equals("RACETIME", StringComparison.OrdinalIgnoreCase) &&
+                    !part.Equals("POS", StringComparison.OrdinalIgnoreCase) &&
+                    !part.Equals("SPEED", StringComparison.OrdinalIgnoreCase) &&
+                    !part.Equals("SEX", StringComparison.OrdinalIgnoreCase) &&
+                    !part.Equals("POSITIONSEX", StringComparison.OrdinalIgnoreCase) &&
+                    !part.Equals("CATEGORY", StringComparison.OrdinalIgnoreCase) &&
+                    !part.Equals("POSITIONCAT", StringComparison.OrdinalIgnoreCase) &&
+                    !part.Equals("TEAM", StringComparison.OrdinalIgnoreCase) &&
+                    !part.Equals("ISMEMBER", StringComparison.OrdinalIgnoreCase) &&
+                    !part.Equals("TIMEPERKM", StringComparison.OrdinalIgnoreCase) &&
                     !part.All(char.IsDigit) &&
+                    !System.Text.RegularExpressions.Regex.IsMatch(part, @"^\d{1,2}:\d{2}(:\d{2})?$") &&  // Skip times
+                    !System.Text.RegularExpressions.Regex.IsMatch(part, @"^\d+\.?\d*$") &&  // Skip pure numbers
                     part.Length > 2)
                 {
                     // Clean the part to remove noise

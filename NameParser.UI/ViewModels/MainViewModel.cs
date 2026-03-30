@@ -130,6 +130,7 @@ namespace NameParser.UI.ViewModels
             ShareRaceToFacebookCommand = new RelayCommand(ExecuteShareRaceToFacebook, CanExecuteShareRaceToFacebook);
             ShareChallengeToFacebookCommand = new RelayCommand(ExecuteShareChallengeToFacebook, CanExecuteShareChallengeToFacebook);
             BrowseDistanceFileCommand = new RelayCommand<RaceDistanceUploadModel>(ExecuteBrowseDistanceFile);
+            ClearDistanceSourceCommand = new RelayCommand<RaceDistanceUploadModel>(ExecuteClearDistanceSource);
             ProcessAllDistancesCommand = new RelayCommand(ExecuteProcessAllDistances, CanExecuteProcessAllDistances);
 
             Years = new ObservableCollection<int>();
@@ -372,6 +373,7 @@ namespace NameParser.UI.ViewModels
         public ICommand ShareRaceToFacebookCommand { get; }
         public ICommand ShareChallengeToFacebookCommand { get; }
         public ICommand BrowseDistanceFileCommand { get; }
+        public ICommand ClearDistanceSourceCommand { get; }
         public ICommand ProcessAllDistancesCommand { get; }
 
         // Export commands for Race Classification
@@ -2689,7 +2691,7 @@ namespace NameParser.UI.ViewModels
 
             var openFileDialog = new OpenFileDialog
             {
-                Filter = "Race Result Files (*.xlsx;*.pdf)|*.xlsx;*.pdf|Excel Files (*.xlsx)|*.xlsx|PDF Files (*.pdf)|*.pdf|All Files (*.*)|*.*",
+                Filter = "Race Result Files (*.xlsx;*.pdf;*.json;*.html)|*.xlsx;*.pdf;*.json;*.html|Excel Files (*.xlsx)|*.xlsx|PDF Files (*.pdf)|*.pdf|ACN Timing Files (*.json;*.html)|*.json;*.html|All Files (*.*)|*.*",
                 Title = $"Select Result File for {distanceUpload.DistanceKm} km"
             };
 
@@ -2700,9 +2702,28 @@ namespace NameParser.UI.ViewModels
                 ((RelayCommand)ProcessAllDistancesCommand)?.RaiseCanExecuteChanged();
 
                 var extension = Path.GetExtension(openFileDialog.FileName).ToLowerInvariant();
-                var fileType = extension == ".pdf" ? "PDF" : "Excel";
+                string fileType;
+                if (extension == ".pdf")
+                    fileType = "PDF";
+                else if (extension == ".json")
+                    fileType = "ACN Timing JSON";
+                else if (extension == ".html")
+                    fileType = "ACN Timing HTML";
+                else
+                    fileType = "Excel";
+
                 StatusMessage = $"{fileType} file selected for {distanceUpload.DistanceKm} km";
             }
+        }
+
+        private void ExecuteClearDistanceSource(RaceDistanceUploadModel distanceUpload)
+        {
+            if (distanceUpload == null) return;
+
+            distanceUpload.FilePath = null;
+            distanceUpload.StatusMessage = "";
+            ((RelayCommand)ProcessAllDistancesCommand)?.RaiseCanExecuteChanged();
+            StatusMessage = $"Cleared source for {distanceUpload.DistanceKm} km";
         }
 
         private bool CanExecuteProcessAllDistances(object parameter)
@@ -2764,17 +2785,33 @@ namespace NameParser.UI.ViewModels
                             var memberService = new MemberService(memberRepository, challengerRepository);
                             var allMembers = memberService.GetAllMembersAndChallengers();
 
-                            // Select appropriate parser
-                            var extension = Path.GetExtension(distanceUpload.FilePath).ToLowerInvariant();
+                            // Select appropriate parser based on source type
                             IRaceResultRepository raceResultRepository;
 
-                            if (extension == ".pdf")
+                            if (distanceUpload.IsUrl)
                             {
-                                raceResultRepository = new PdfRaceResultRepository();
+                                // URL - use ACN Timing repository
+                                raceResultRepository = new AcnTimingRaceResultRepository();
                             }
                             else
                             {
-                                raceResultRepository = new ExcelRaceResultRepository();
+                                // File - detect type by extension
+                                var extension = Path.GetExtension(distanceUpload.FilePath).ToLowerInvariant();
+
+                                if (extension == ".pdf")
+                                {
+                                    raceResultRepository = new PdfRaceResultRepository();
+                                }
+                                else if (extension == ".json" || extension == ".html")
+                                {
+                                    // ACN Timing cached files
+                                    raceResultRepository = new AcnTimingRaceResultRepository();
+                                }
+                                else
+                                {
+                                    // Default to Excel
+                                    raceResultRepository = new ExcelRaceResultRepository();
+                                }
                             }
 
                             var pointsCalculationService = new PointsCalculationService();

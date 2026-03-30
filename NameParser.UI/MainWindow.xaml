@@ -105,7 +105,7 @@
                             <!-- Distance Files Upload -->
                             <GroupBox Header="Upload Results by Distance" Margin="5">
                                 <StackPanel>
-                                    <TextBlock Text="Select a file for each distance (only distances with files will be processed):" 
+                                    <TextBlock Text="Select a file or enter an ACN Timing URL for each distance (only distances with files/URLs will be processed):" 
                                               TextWrapping="Wrap" Margin="0,0,0,10" FontStyle="Italic"/>
 
                                     <ItemsControl ItemsSource="{Binding AvailableDistancesForUpload}">
@@ -117,6 +117,7 @@
                                                             <RowDefinition Height="Auto"/>
                                                             <RowDefinition Height="Auto"/>
                                                             <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
                                                         </Grid.RowDefinitions>
 
                                                         <TextBlock Grid.Row="0" FontWeight="Bold" FontSize="14" Margin="0,0,0,5">
@@ -124,14 +125,48 @@
                                                             <Run Text="{Binding DistanceKm, Mode=OneWay, StringFormat={}{0} km}" Foreground="#2196F3"/>
                                                         </TextBlock>
 
-                                                        <TextBox Grid.Row="1" Text="{Binding FileName, Mode=OneWay}" IsReadOnly="True" 
-                                                                Background="#FFFFFF" Margin="0,0,0,5"/>
+                                                        <!-- File/URL Display -->
+                                                        <Grid Grid.Row="1" Margin="0,0,0,5">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
 
-                                                        <StackPanel Grid.Row="2" Orientation="Horizontal">
-                                                            <Button Content="Browse File..." 
+                                                            <TextBlock Grid.Column="0" Text="{Binding SourceType}" 
+                                                                      VerticalAlignment="Center" Margin="0,0,5,0"
+                                                                      FontWeight="SemiBold"/>
+                                                            <TextBox Grid.Column="1" Text="{Binding FileName, Mode=OneWay}" 
+                                                                    IsReadOnly="True" Background="#FFFFFF"/>
+                                                        </Grid>
+
+                                                        <!-- URL Input -->
+                                                        <StackPanel Grid.Row="2" Margin="0,0,0,5">
+                                                            <TextBlock Text="ACN Timing URL:" FontWeight="SemiBold" Margin="0,0,0,3"/>
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+
+                                                                <TextBox Grid.Column="0" 
+                                                                        Text="{Binding FilePath, UpdateSourceTrigger=PropertyChanged}" 
+                                                                        Background="#FFFFFF"
+                                                                        ToolTip="Enter ACN Timing URL (e.g., https://www.acn-timing.com/...)"
+                                                                        FontSize="11" Margin="0,0,5,0"/>
+
+                                                                <Button Grid.Column="1" Content="Clear"
+                                                                       Command="{Binding DataContext.ClearDistanceSourceCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                       CommandParameter="{Binding}"
+                                                                       Width="60" Padding="5,2"/>
+                                                            </Grid>
+                                                        </StackPanel>
+
+                                                        <!-- Buttons -->
+                                                        <StackPanel Grid.Row="3" Orientation="Horizontal">
+                                                            <Button Content="📁 Browse File..." 
                                                                    Command="{Binding DataContext.BrowseDistanceFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                    CommandParameter="{Binding}"
-                                                                   Width="100" Margin="0,0,5,0"/>
+                                                                   Width="120" Margin="0,0,5,0"/>
                                                             <TextBlock Text="{Binding StatusMessage}" 
                                                                       VerticalAlignment="Center" 
                                                                       FontStyle="Italic"
@@ -183,13 +218,17 @@
                                 <Run Text="Choose the race event from the dropdown. The event should already be created in the Race Event Management tab."/>
                                 <LineBreak/><LineBreak/>
 
-                                <Run Text="Step 2: Upload Result Files" FontWeight="Bold"/>
+                                <Run Text="Step 2: Upload Result Files or Enter URLs" FontWeight="Bold"/>
                                 <LineBreak/>
-                                <Run Text="For each distance that has results, click 'Browse File...' and select the Excel (.xlsx) or PDF file containing the race results."/>
+                                <Run Text="For each distance that has results, you can either:"/>
                                 <LineBreak/>
-                                <Run Text="• You can upload results for one or more distances"/>
+                                <Run Text="• Click 'Browse File...' and select an Excel (.xlsx) or PDF file"/>
                                 <LineBreak/>
-                                <Run Text="• Distances without files will be skipped"/>
+                                <Run Text="• Enter an ACN Timing URL directly in the URL field"/>
+                                <LineBreak/>
+                                <Run Text="• You can mix files and URLs for different distances"/>
+                                <LineBreak/>
+                                <Run Text="• Distances without files or URLs will be skipped"/>
                                 <LineBreak/><LineBreak/>
 
                                 <Run Text="Step 3: Process" FontWeight="Bold"/>
@@ -216,6 +255,11 @@
                                     <TextBlock Text="PDF files:" FontWeight="SemiBold" Margin="0,10,0,0"/>
                                     <TextBlock Text="• Must be text-based (not scanned images)" TextWrapping="Wrap" Margin="5,2,5,0"/>
                                     <TextBlock Text="• Should follow standard race result format" TextWrapping="Wrap" Margin="5,2,5,0"/>
+
+                                    <TextBlock Text="ACN Timing URLs:" FontWeight="SemiBold" Margin="0,10,0,0"/>
+                                    <TextBlock Text="• Copy the full URL from your browser" TextWrapping="Wrap" Margin="5,2,5,0"/>
+                                    <TextBlock Text="• Example: https://www.acn-timing.com/?lng=FR#/events/..." TextWrapping="Wrap" Margin="5,2,5,0"/>
+                                    <TextBlock Text="• System automatically fetches and parses results" TextWrapping="Wrap" Margin="5,2,5,0"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>

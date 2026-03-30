@@ -33,8 +33,28 @@ namespace NameParser.Infrastructure.Data
                         $"Please use a different race number, distance, or delete the existing race first.");
                 }
 
-                // Read the file content into memory
-                var fileData = _fileStorageService.ReadRaceFile(filePath);
+                // Determine if the source is a URL or a local file
+                bool isUrl = filePath.StartsWith("http://", System.StringComparison.OrdinalIgnoreCase) || 
+                             filePath.StartsWith("https://", System.StringComparison.OrdinalIgnoreCase);
+
+                byte[] fileContent = null;
+                string fileName = null;
+                string fileExtension = null;
+
+                // Only read file content for local files, not URLs
+                if (!isUrl)
+                {
+                    var fileData = _fileStorageService.ReadRaceFile(filePath);
+                    fileContent = fileData.content;
+                    fileName = fileData.fileName;
+                    fileExtension = fileData.extension;
+                }
+                else
+                {
+                    // For URLs, store the URL as the file name for reference
+                    fileName = filePath;
+                    fileExtension = ".url";
+                }
 
                 var entity = new RaceEntity
                 {
@@ -43,9 +63,9 @@ namespace NameParser.Infrastructure.Data
                     RaceNumber = raceDistance.RaceNumber,
                     DistanceKm = raceDistance.DistanceKm,
                     RaceEventId = raceEventId,
-                    FileContent = fileData.content,
-                    FileName = fileData.fileName,
-                    FileExtension = fileData.extension,
+                    FileContent = fileContent,
+                    FileName = fileName,
+                    FileExtension = fileExtension,
                     FilePath = null, // Deprecated, no longer storing file path
                     CreatedDate = System.DateTime.Now,
                     Status = "Pending",

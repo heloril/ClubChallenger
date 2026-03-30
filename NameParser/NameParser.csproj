@@ -22,6 +22,9 @@
     <None Remove="PdfAnalyzer\**" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Examples\AcnTimingIntegrationExample.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="EPPlus" Version="7.5.2" />
     <PackageReference Include="ExcelDataReader" Version="3.8.0" />
     <PackageReference Include="ExcelDataReader.DataSet" Version="3.8.0" />
@@ -81,6 +84,7 @@
     <Content Include="Courses\06.8.Liege.xlsx">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+    <Content Include="Examples\ACN_Timing_Race_Configuration.json" />
     <None Update="Challenge.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
