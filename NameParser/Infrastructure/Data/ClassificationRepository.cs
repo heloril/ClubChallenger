@@ -157,12 +157,32 @@ namespace NameParser.Infrastructure.Data
                     .Where(c => c.Race.Year == year && c.IsChallenger)
                     .ToList();
 
-                // Group by challenger
+                // Group by challenger using normalized name only (case-insensitive, trimmed)
+                // This ensures same person is grouped even with email/team variations
                 var grouped = challengerClassifications
-                    .GroupBy(c => new { c.MemberFirstName, c.MemberLastName, c.MemberEmail, c.Team })
+                    .GroupBy(c => new 
+                    { 
+                        FirstName = NormalizeName(c.MemberFirstName), 
+                        LastName = NormalizeName(c.MemberLastName)
+                    })
                     .Select(g => new
                     {
-                        Challenger = g.Key,
+                        // Use the most recent non-null values for display
+                        Challenger = new
+                        {
+                            MemberFirstName = g.OrderByDescending(x => x.CreatedDate)
+                                               .Select(x => x.MemberFirstName)
+                                               .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? g.First().MemberFirstName,
+                            MemberLastName = g.OrderByDescending(x => x.CreatedDate)
+                                              .Select(x => x.MemberLastName)
+                                              .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? g.First().MemberLastName,
+                            MemberEmail = g.OrderByDescending(x => x.CreatedDate)
+                                           .Select(x => x.MemberEmail)
+                                           .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)),
+                            Team = g.OrderByDescending(x => x.CreatedDate)
+                                    .Select(x => x.Team)
+                                    .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+                        },
                         Classifications = g.OrderByDescending(c => c.Points).ToList()
                     })
                     .ToList();
@@ -275,12 +295,32 @@ namespace NameParser.Infrastructure.Data
                     .Where(c => challengeRaces.Contains(c.RaceId) && c.IsChallenger)
                     .ToList();
 
-                // Group by challenger
+                // Group by challenger using normalized name only (case-insensitive, trimmed)
+                // This ensures same person is grouped even with email/team variations
                 var grouped = challengerClassifications
-                    .GroupBy(c => new { c.MemberFirstName, c.MemberLastName, c.MemberEmail, c.Team })
+                    .GroupBy(c => new 
+                    { 
+                        FirstName = NormalizeName(c.MemberFirstName), 
+                        LastName = NormalizeName(c.MemberLastName)
+                    })
                     .Select(g => new
                     {
-                        Challenger = g.Key,
+                        // Use the most recent non-null values for display
+                        Challenger = new
+                        {
+                            MemberFirstName = g.OrderByDescending(x => x.CreatedDate)
+                                               .Select(x => x.MemberFirstName)
+                                               .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? g.First().MemberFirstName,
+                            MemberLastName = g.OrderByDescending(x => x.CreatedDate)
+                                              .Select(x => x.MemberLastName)
+                                              .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? g.First().MemberLastName,
+                            MemberEmail = g.OrderByDescending(x => x.CreatedDate)
+                                           .Select(x => x.MemberEmail)
+                                           .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)),
+                            Team = g.OrderByDescending(x => x.CreatedDate)
+                                    .Select(x => x.Team)
+                                    .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+                        },
                         Classifications = g.OrderByDescending(c => c.Points).ToList()
                     })
                     .ToList();
@@ -390,6 +430,21 @@ namespace NameParser.Infrastructure.Data
                     context.SaveChanges();
                 }
             }
+        }
+
+        /// <summary>
+        /// Normalizes a name for consistent grouping (case-insensitive, trimmed, no leading/trailing spaces)
+        /// </summary>
+        private static string NormalizeName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return string.Empty;
+
+            // Trim, convert to lowercase, remove multiple spaces
+            return System.Text.RegularExpressions.Regex.Replace(
+                name.Trim().ToLowerInvariant(), 
+                @"\s+", 
+                " ");
         }
     }
 }
