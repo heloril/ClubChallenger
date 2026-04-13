@@ -238,5 +238,95 @@ namespace NameParser.UI
                 button.ContextMenu.IsOpen = true;
             }
         }
+
+        private void MemberCheckBox_Click(object sender, RoutedEventArgs e)
+        {
+            var checkBox = sender as CheckBox;
+            if (checkBox == null) return;
+
+            var classification = checkBox.Tag as NameParser.Infrastructure.Data.Models.ClassificationEntity;
+            if (classification == null) return;
+
+            var viewModel = DataContext as MainViewModel;
+            if (viewModel == null) return;
+
+            // Get the intended new value (after click)
+            bool newValue = checkBox.IsChecked ?? false;
+
+            // Get the old value (before click) - we need to invert because the click already happened
+            bool oldValue = !newValue;
+
+            string participantName = $"{classification.MemberFirstName} {classification.MemberLastName}";
+            string action = newValue ? "mark" : "unmark";
+
+            string message = $"Are you sure you want to {action} '{participantName}' as a Member?\n\n" +
+                           $"This will update the database and affect:\n" +
+                           $"• Race classifications\n" +
+                           $"• Points calculations\n" +
+                           $"• Export reports";
+
+            var result = MessageBox.Show(
+                message,
+                "Confirm Member Status Change",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                // User confirmed - update the database
+                viewModel.UpdateClassificationMemberStatus(classification.Id, newValue);
+            }
+            else
+            {
+                // User cancelled - revert the checkbox
+                checkBox.IsChecked = oldValue;
+                classification.IsMember = oldValue;
+            }
+        }
+
+        private void ChallengerCheckBox_Click(object sender, RoutedEventArgs e)
+        {
+            var checkBox = sender as CheckBox;
+            if (checkBox == null) return;
+
+            var classification = checkBox.Tag as NameParser.Infrastructure.Data.Models.ClassificationEntity;
+            if (classification == null) return;
+
+            var viewModel = DataContext as MainViewModel;
+            if (viewModel == null) return;
+
+            // Get the intended new value (after click)
+            bool newValue = checkBox.IsChecked ?? false;
+
+            // Get the old value (before click) - we need to invert because the click already happened
+            bool oldValue = !newValue;
+
+            string participantName = $"{classification.MemberFirstName} {classification.MemberLastName}";
+            string action = newValue ? "mark" : "unmark";
+
+            string message = $"Are you sure you want to {action} '{participantName}' as a Challenger?\n\n" +
+                           $"This will update the database and affect:\n" +
+                           $"• Race classifications\n" +
+                           $"• Points calculations\n" +
+                           $"• Export reports";
+
+            var result = MessageBox.Show(
+                message,
+                "Confirm Challenger Status Change",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                // User confirmed - update the database
+                viewModel.UpdateClassificationChallengerStatus(classification.Id, newValue);
+            }
+            else
+            {
+                // User cancelled - revert the checkbox
+                checkBox.IsChecked = oldValue;
+                classification.IsChallenger = oldValue;
+            }
+        }
     }
 }

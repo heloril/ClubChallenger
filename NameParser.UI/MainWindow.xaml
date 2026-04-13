@@ -415,26 +415,51 @@
                             <!-- DataGrid -->
                             <DataGrid Grid.Row="1" ItemsSource="{Binding Classifications}" 
                                       AutoGenerateColumns="False" 
-                                      IsReadOnly="True"
+                                      IsReadOnly="False"
                                       Margin="5">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Rank], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Id}" Width="60"/>
-                                    <DataGridTextColumn Header="Distance" Binding="{Binding Race.DistanceKm, StringFormat={}{0} km}" Width="80"/>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Position], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Position}" Width="70"/>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[FirstName], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding MemberFirstName}" Width="*"/>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[LastName], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding MemberLastName}" Width="*"/>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Sex], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Sex}" Width="50"/>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[PosBySex], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding PositionBySex}" Width="70"/>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Category], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding AgeCategory}" Width="80"/>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[PosByCategory], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding PositionByCategory}" Width="70"/>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Team], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Team}" Width="120"/>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Points], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Points}" Width="80"/>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[RaceTime], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding RaceTime, Converter={StaticResource TimeSpanToStringConverter}}" Width="100"/>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[TimePerKm], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding TimePerKm, Converter={StaticResource TimeSpanToStringConverter}}" Width="90"/>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Speed], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Speed, StringFormat={}{0:F2}}" Width="100"/>
-                                    <DataGridCheckBoxColumn Header="{Binding DataContext.Localization[Member], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding IsMember}" Width="70" IsReadOnly="True"/>
-                                    <DataGridCheckBoxColumn Header="{Binding DataContext.Localization[Challenger], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding IsChallenger}" Width="80" IsReadOnly="True"/>
-                                    <DataGridTextColumn Header="{Binding DataContext.Localization[BonusKM], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding BonusKm}" Width="90"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Rank], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Id}" Width="60" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Distance" Binding="{Binding Race.DistanceKm, StringFormat={}{0} km}" Width="80" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Position], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Position}" Width="70" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[FirstName], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding MemberFirstName}" Width="*" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[LastName], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding MemberLastName}" Width="*" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Sex], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Sex}" Width="50" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[PosBySex], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding PositionBySex}" Width="70" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Category], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding AgeCategory}" Width="80" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[PosByCategory], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding PositionByCategory}" Width="70" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Team], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Team}" Width="120" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Points], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Points}" Width="80" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[RaceTime], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding RaceTime, Converter={StaticResource TimeSpanToStringConverter}}" Width="100" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[TimePerKm], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding TimePerKm, Converter={StaticResource TimeSpanToStringConverter}}" Width="90" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[Speed], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding Speed, StringFormat={}{0:F2}}" Width="100" IsReadOnly="True"/>
+
+                                    <!-- Member Checkbox with Click Event -->
+                                    <DataGridTemplateColumn Header="{Binding DataContext.Localization[Member], RelativeSource={RelativeSource AncestorType=Window}}" Width="70">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding IsMember, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          Click="MemberCheckBox_Click"
+                                                          HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"
+                                                          Tag="{Binding}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+
+                                    <!-- Challenger Checkbox with Click Event -->
+                                    <DataGridTemplateColumn Header="{Binding DataContext.Localization[Challenger], RelativeSource={RelativeSource AncestorType=Window}}" Width="80">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding IsChallenger, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          Click="ChallengerCheckBox_Click"
+                                                          HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"
+                                                          Tag="{Binding}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+
+                                    <DataGridTextColumn Header="{Binding DataContext.Localization[BonusKM], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding BonusKm}" Width="90" IsReadOnly="True"/>
 
                                     <!-- Delete Button Column -->
                                     <DataGridTemplateColumn Header="Delete" Width="60">

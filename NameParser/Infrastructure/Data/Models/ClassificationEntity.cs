@@ -1,12 +1,17 @@
 using System;
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Runtime.CompilerServices;
 
 namespace NameParser.Infrastructure.Data.Models
 {
     [Table("Classifications")]
-    public class ClassificationEntity
+    public class ClassificationEntity : INotifyPropertyChanged
     {
+        private bool _isMember;
+        private bool _isChallenger;
+
         [Key]
         public int Id { get; set; }
 
@@ -54,10 +59,39 @@ namespace NameParser.Infrastructure.Data.Models
 
         public int? PositionByCategory { get; set; }
 
-        public bool IsMember { get; set; }
+        public bool IsMember
+        {
+            get => _isMember;
+            set
+            {
+                if (_isMember != value)
+                {
+                    _isMember = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
 
-        public bool IsChallenger { get; set; }
+        public bool IsChallenger
+        {
+            get => _isChallenger;
+            set
+            {
+                if (_isChallenger != value)
+                {
+                    _isChallenger = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
 
         public DateTime CreatedDate { get; set; }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
     }
 }

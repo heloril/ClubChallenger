@@ -4279,6 +4279,40 @@ namespace NameParser.UI.ViewModels
             })
             .GeneratePdf(filePath);
         }
+
+        /// <summary>
+        /// Updates the IsMember status of a classification
+        /// </summary>
+        public void UpdateClassificationMemberStatus(int classificationId, bool isMember)
+        {
+            try
+            {
+                _classificationRepository.UpdateClassificationMemberStatus(classificationId, isMember);
+                StatusMessage = $"Updated member status for classification ID {classificationId}";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error updating member status: {ex.Message}";
+                MessageBox.Show($"Error updating member status: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Updates the IsChallenger status of a classification
+        /// </summary>
+        public void UpdateClassificationChallengerStatus(int classificationId, bool isChallenger)
+        {
+            try
+            {
+                _classificationRepository.UpdateClassificationChallengerStatus(classificationId, isChallenger);
+                StatusMessage = $"Updated challenger status for classification ID {classificationId}";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error updating challenger status: {ex.Message}";
+                MessageBox.Show($"Error updating challenger status: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
     }
 
     public class LanguageOption

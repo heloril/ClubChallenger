@@ -359,5 +359,37 @@ namespace NameParser.Infrastructure.Data
                 return result;
             }
         }
+
+        /// <summary>
+        /// Updates the IsMember status of a classification
+        /// </summary>
+        public void UpdateClassificationMemberStatus(int classificationId, bool isMember)
+        {
+            using (var context = new RaceManagementContext())
+            {
+                var classification = context.Classifications.Find(classificationId);
+                if (classification != null)
+                {
+                    classification.IsMember = isMember;
+                    context.SaveChanges();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Updates the IsChallenger status of a classification
+        /// </summary>
+        public void UpdateClassificationChallengerStatus(int classificationId, bool isChallenger)
+        {
+            using (var context = new RaceManagementContext())
+            {
+                var classification = context.Classifications.Find(classificationId);
+                if (classification != null)
+                {
+                    classification.IsChallenger = isChallenger;
+                    context.SaveChanges();
+                }
+            }
+        }
     }
 }
