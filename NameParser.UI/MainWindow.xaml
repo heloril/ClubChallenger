@@ -79,8 +79,9 @@
 
                     <!-- Input Form -->
                     <Border Grid.Column="0" BorderBrush="#CCCCCC" BorderThickness="1" Padding="10" Margin="5">
-                        <StackPanel>
-                            <TextBlock Text="{Binding Localization[RaceInformation]}" FontSize="18" FontWeight="Bold" Margin="5,5,5,15"/>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="{Binding Localization[RaceInformation]}" FontSize="18" FontWeight="Bold" Margin="5,5,5,15"/>
 
                             <!-- Race Event Selection -->
                             <GroupBox Header="Race Event" Margin="5">
@@ -202,6 +203,7 @@
                                 <ProgressBar IsIndeterminate="True" Width="100" Height="20"/>
                             </StackPanel>
                         </StackPanel>
+                        </ScrollViewer>
                     </Border>
 
                     <!-- Instructions -->

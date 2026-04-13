@@ -253,15 +253,24 @@ namespace NameParser.Infrastructure.Repositories
                 {
                     JsonElement root = doc.RootElement;
 
+                    // Handle different JSON structures
+                    JsonElement resultsArray;
+
+                    // Check if root is an array first (before trying to access properties)
+                    if (root.ValueKind == JsonValueKind.Array)
+                    {
+                        resultsArray = root;
+                    }
                     // chronorace.be structure: { "Groups": [{ "SlaveRows": [[...], [...]] }] }
-                    if (root.TryGetProperty("Groups", out var groupsProperty))
+                    else if (root.TryGetProperty("Groups", out var groupsProperty))
                     {
                         // Check if Groups is null (no results yet)
                         if (groupsProperty.ValueKind == JsonValueKind.Null)
                         {
                             System.Diagnostics.Debug.WriteLine("chronorace.be Groups is null - no results available yet");
-                            // Return empty results with just header
-                            results[rowId++] = "Header;No results available yet;";
+                            // Return results with header and a message row
+                            results[rowId++] = "Header;Position;Sex;Bib;Name;Country;Status;Time;Speed;Category;Category Position;";
+                            results[rowId++] = "No results available yet";
                             return results;
                         }
 
@@ -275,13 +284,9 @@ namespace NameParser.Infrastructure.Repositories
                                 return ParseChronoraceResults(slaveRowsProperty, members);
                             }
                         }
-                    }
 
-                    // Handle different JSON structures
-                    JsonElement resultsArray;
-                    if (root.ValueKind == JsonValueKind.Array)
-                    {
-                        resultsArray = root;
+                        // Groups exists but is not in expected format
+                        throw new Exception("chronorace.be Groups property found but in unexpected format");
                     }
                     else if (root.TryGetProperty("rows", out var rowsProperty))
                     {
@@ -394,10 +399,13 @@ namespace NameParser.Infrastructure.Repositories
             results[rowId++] = "Header;Position;Sex;Bib;Name;Country;Status;Time;Speed;Category;Category Position;";
 
             // chronorace.be structure: SlaveRows is an array of arrays
-            // Each inner array contains: [position, sex, bib, name_html, country, sex2, ?, ?, status, time_html, category_position, category, detail, style, bib2]
-            // Example: ["46.","M","411","<b>DE VOS Nicolas</b><br/><small></small>","BEL","M","","","Finish","<b>1:36:20</b><br/><small>  13.4km/h</small>","12","V1H","detail:411_3","","411"]
+            // There are two known formats:
+            // 1. HTML format: [position, sex, bib, name_html, country, sex2, ?, ?, status, time_html, category_position, category, detail, style, bib2]
+            //    Example: ["46.","M","411","<b>DE VOS Nicolas</b><br/><small></small>","BEL","M","","","Finish","<b>1:36:20</b><br/><small>  13.4km/h</small>","12","V1H","detail:411_3","","411"]
+            // 2. Clean format: [position, bib, name, team, country, sex, ?, ?, ?, status, time, ?, speed, category_position, category, link, ?, ?, ?, ?]
+            //    Example: ["1.","14263","ZALESKI Jules","TEAMULIEGE","BEL","M","","TEAMULIEGE","TEAMULIEGE","Finish","3:28:45","-","13.250","1","SEH","LINK:...","","14263","diplome.gif","..."]
 
-            // Track sex position by counting participants of each sex
+            // Track sex position by counting participants of each sex (only for finishers)
             var sexPositionCounters = new Dictionary<string, int>();
 
             foreach (JsonElement row in slaveRowsArray.EnumerateArray())
@@ -427,16 +435,63 @@ namespace NameParser.Infrastructure.Repositories
 
                 try
                 {
-                    // Parse position (remove trailing dot if present)
-                    var positionStr = cells[0].TrimEnd('.');
-                    int? position = string.IsNullOrWhiteSpace(positionStr) ? null : (int?)int.Parse(positionStr);
+                    // Detect format by checking if index 3 contains HTML tags
+                    bool isHtmlFormat = cells.Count >= 4 && cells[3].Contains("<");
 
-                    // Parse sex
-                    var sex = cells[1];
+                    string positionStr, bib, nameRaw, team, country, sex, status, timeStr, speedStr, categoryPositionStr, category;
 
-                    // Calculate sex position by incrementing counter for this sex
+                    if (isHtmlFormat)
+                    {
+                        // HTML format (old style)
+                        positionStr = cells[0].TrimEnd('.');
+                        sex = cells[1];
+                        bib = cells[2];
+                        nameRaw = cells[3];
+                        country = cells[4];
+                        status = cells[8];
+                        var timeHtml = cells[9];
+                        categoryPositionStr = cells[10];
+                        category = cells[11];
+
+                        // Parse time from HTML (e.g., "<b>1:36:20</b><br/><small>  13.4km/h</small>")
+                        var timeMatch = Regex.Match(timeHtml, @"<b>([^<]+)</b>");
+                        timeStr = timeMatch.Success ? timeMatch.Groups[1].Value : "";
+
+                        // Parse speed from HTML
+                        var speedMatch = Regex.Match(timeHtml, @"([\d.]+)\s*km/h");
+                        speedStr = speedMatch.Success ? speedMatch.Groups[1].Value : "";
+
+                        team = country; // Use country as team for HTML format
+                    }
+                    else
+                    {
+                        // Clean format (new style)
+                        positionStr = cells[0].TrimEnd('.');
+                        bib = cells[1];
+                        nameRaw = cells[2];
+                        team = cells[3];
+                        country = cells[4];
+                        sex = cells[5];
+                        status = cells.Count > 9 ? cells[9] : "";
+                        timeStr = cells.Count > 10 ? cells[10] : "";
+                        speedStr = cells.Count > 12 ? cells[12] : "";
+                        categoryPositionStr = cells.Count > 13 ? cells[13] : "";
+                        category = cells.Count > 14 ? cells[14] : "";
+                    }
+
+                    // Parse position (skip DNS/DNF with "-")
+                    int? position = null;
+                    if (!string.IsNullOrWhiteSpace(positionStr) && positionStr != "-")
+                    {
+                        if (int.TryParse(positionStr, out int pos))
+                        {
+                            position = pos;
+                        }
+                    }
+
+                    // Only count finishers for sex position
                     int? sexPosition = null;
-                    if (!string.IsNullOrWhiteSpace(sex))
+                    if (position.HasValue && !string.IsNullOrWhiteSpace(sex))
                     {
                         if (!sexPositionCounters.ContainsKey(sex))
                         {
@@ -446,37 +501,21 @@ namespace NameParser.Infrastructure.Repositories
                         sexPosition = sexPositionCounters[sex];
                     }
 
-                    // Parse bib number
-                    var bib = cells[2];
+                    // Strip HTML tags from name if present
+                    var fullName = StripHtmlTags(nameRaw);
 
-                    // Parse name from HTML (e.g., "<b>DE VOS Nicolas</b><br/><small></small>")
-                    var nameHtml = cells[3];
-                    var fullName = StripHtmlTags(nameHtml);
-
-                    // Parse country
-                    var country = cells[4];
-
-                    // Parse status
-                    var status = cells[8];
-
-                    // Parse time from HTML (e.g., "<b>1:36:20</b><br/><small>  13.4km/h</small>")
-                    var timeHtml = cells[9];
-                    var timeMatch = Regex.Match(timeHtml, @"<b>([^<]+)</b>");
-                    var timeStr = timeMatch.Success ? timeMatch.Groups[1].Value : "";
-
-                    // Parse speed from HTML
-                    var speedMatch = Regex.Match(timeHtml, @"([\d.]+)\s*km/h");
-                    var speedStr = speedMatch.Success ? speedMatch.Groups[1].Value : "";
-
-                    // Parse category position (index 10 is position in category, not sex position)
-                    var categoryPositionStr = cells[10];
-                    int? categoryPosition = string.IsNullOrWhiteSpace(categoryPositionStr) ? null : (int?)int.Parse(categoryPositionStr);
-
-                    // Parse category
-                    var category = cells[11];
+                    // Parse category position
+                    int? categoryPosition = null;
+                    if (!string.IsNullOrWhiteSpace(categoryPositionStr) && categoryPositionStr != "-")
+                    {
+                        if (int.TryParse(categoryPositionStr, out int catPos))
+                        {
+                            categoryPosition = catPos;
+                        }
+                    }
 
                     // Try to split fullName into firstName and lastName
-                    // chronorace.be format: "LastName FirstName" (e.g., "DE VOS Nicolas", "FETTWEIS Véronique")
+                    // chronorace.be format: "LastName FirstName" (e.g., "DE VOS Nicolas", "ZALESKI Jules")
                     // The last word is the first name, everything before is the last name
                     string firstName = "";
                     string lastName = "";
@@ -508,11 +547,19 @@ namespace NameParser.Infrastructure.Repositories
                         lastName = matchedMember.LastName;
                     }
 
-                    // Parse time
-                    TimeSpan? raceTime = ParseTime(timeStr);
+                    // Parse time (skip if "-" or null)
+                    TimeSpan? raceTime = null;
+                    if (!string.IsNullOrWhiteSpace(timeStr) && timeStr != "-")
+                    {
+                        raceTime = ParseTime(timeStr);
+                    }
 
-                    // Parse speed
-                    double? speed = ParseSpeed(speedStr);
+                    // Parse speed (skip if "-" or empty)
+                    double? speed = null;
+                    if (!string.IsNullOrWhiteSpace(speedStr) && speedStr != "-")
+                    {
+                        speed = ParseSpeed(speedStr);
+                    }
 
                     // Build result string with metadata format matching other repositories
                     // Format: TMEM;RACETIME;hh:mm:ss;POS;46;SPEED;13.4;SEX;M;POSITIONSEX;12;CATEGORY;V1H;POSITIONCAT;12;TEAM;BEL;ISMEMBER;1;Nicolas;De Vos
@@ -563,10 +610,11 @@ namespace NameParser.Infrastructure.Repositories
                         resultBuilder.Append($"POSITIONCAT;{categoryPosition};");
                     }
 
-                    // Add team (country in this case)
-                    if (!string.IsNullOrWhiteSpace(country))
+                    // Add team (use team if available, otherwise country)
+                    var teamValue = !string.IsNullOrWhiteSpace(team) ? team : country;
+                    if (!string.IsNullOrWhiteSpace(teamValue))
                     {
-                        resultBuilder.Append($"TEAM;{country};");
+                        resultBuilder.Append($"TEAM;{teamValue};");
                     }
 
                     // Add member flag
