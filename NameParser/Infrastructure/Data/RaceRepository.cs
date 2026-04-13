@@ -51,9 +51,41 @@ namespace NameParser.Infrastructure.Data
                 }
                 else
                 {
-                    // For URLs, store the URL as the file name for reference
-                    fileName = filePath;
-                    fileExtension = ".url";
+                    // For URLs, download and cache the content for future reprocessing
+                    try
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Downloading and caching content from URL: {filePath}");
+                        var httpClient = new System.Net.Http.HttpClient();
+                        httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+                        httpClient.DefaultRequestHeaders.Add("Accept", "application/json, text/html, */*");
+
+                        var response = httpClient.GetAsync(filePath).GetAwaiter().GetResult();
+                        if (response.IsSuccessStatusCode)
+                        {
+                            var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+
+                            // Store as JSON since most ACN Timing URLs return JSON
+                            fileContent = System.Text.Encoding.UTF8.GetBytes(content);
+                            fileName = filePath; // Store the original URL for reference
+                            fileExtension = ".json"; // Mark as JSON for proper parsing
+
+                            System.Diagnostics.Debug.WriteLine($"Successfully cached {fileContent.Length} bytes from URL");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Failed to download URL content: HTTP {response.StatusCode}");
+                            // Store URL info even if download fails, for future re-download attempts
+                            fileName = filePath;
+                            fileExtension = ".url";
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Error caching URL content: {ex.Message}");
+                        // Store URL info even if caching fails
+                        fileName = filePath;
+                        fileExtension = ".url";
+                    }
                 }
 
                 var entity = new RaceEntity
@@ -86,6 +118,23 @@ namespace NameParser.Infrastructure.Data
                 {
                     race.Status = status;
                     race.ProcessedDate = System.DateTime.Now;
+                    context.SaveChanges();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Updates the file content of a race (useful for caching downloaded URL content)
+        /// </summary>
+        public void UpdateRaceFileContent(int raceId, byte[] fileContent, string fileExtension)
+        {
+            using (var context = new RaceManagementContext())
+            {
+                var race = context.Races.Find(raceId);
+                if (race != null)
+                {
+                    race.FileContent = fileContent;
+                    race.FileExtension = fileExtension;
                     context.SaveChanges();
                 }
             }

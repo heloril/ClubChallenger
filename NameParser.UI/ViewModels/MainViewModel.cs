@@ -559,18 +559,24 @@ namespace NameParser.UI.ViewModels
         private bool CanExecuteReprocessRace(object parameter)
         {
             return !IsProcessing && SelectedRaceEventForClassification != null && 
-                   RacesInSelectedEvent.Any(r => r.FileContent != null && r.FileContent.Length > 0);
+                   RacesInSelectedEvent.Any(r => 
+                       (r.FileContent != null && r.FileContent.Length > 0) || 
+                       r.FileExtension == ".url" || 
+                       r.FileExtension == ".json");
         }
 
         private async void ExecuteReprocessRace(object parameter)
         {
             if (SelectedRaceEventForClassification == null) return;
 
-            var racesToReprocess = RacesInSelectedEvent.Where(r => r.FileContent != null && r.FileContent.Length > 0).ToList();
+            var racesToReprocess = RacesInSelectedEvent.Where(r => 
+                (r.FileContent != null && r.FileContent.Length > 0) || 
+                r.FileExtension == ".url" || 
+                r.FileExtension == ".json").ToList();
 
             if (!racesToReprocess.Any())
             {
-                MessageBox.Show("No races with stored files found in this event.", "No Races", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("No races with stored files or URLs found in this event.", "No Races", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
@@ -599,18 +605,49 @@ namespace NameParser.UI.ViewModels
                     {
                         await System.Threading.Tasks.Task.Run(() =>
                         {
-                            // Check if the stored file content exists
-                            if (race.FileContent == null || race.FileContent.Length == 0)
-                            {
-                                throw new InvalidOperationException($"No file content stored in database for {race.DistanceKm}km race.");
-                            }
-
                             string tempFilePath = null;
+                            byte[] contentToProcess = race.FileContent;
+                            string fileExtension = race.FileExtension;
+
                             try
                             {
-                                // Write file content from database to temporary file for processing
+                                // If no cached content but we have a URL, try to re-download
+                                if ((contentToProcess == null || contentToProcess.Length == 0) && fileExtension == ".url")
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"Re-downloading content from URL: {race.FileName}");
+
+                                    var httpClient = new System.Net.Http.HttpClient();
+                                    httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+                                    httpClient.DefaultRequestHeaders.Add("Accept", "application/json, text/html, */*");
+
+                                    var response = httpClient.GetAsync(race.FileName).GetAwaiter().GetResult();
+                                    if (response.IsSuccessStatusCode)
+                                    {
+                                        var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                                        contentToProcess = System.Text.Encoding.UTF8.GetBytes(content);
+                                        fileExtension = ".json"; // ACN Timing URLs typically return JSON
+
+                                        System.Diagnostics.Debug.WriteLine($"Successfully re-downloaded {contentToProcess.Length} bytes from URL");
+
+                                        // Save the downloaded content to the database to avoid re-downloading in the future
+                                        _raceRepository.UpdateRaceFileContent(race.Id, contentToProcess, fileExtension);
+                                        System.Diagnostics.Debug.WriteLine($"Cached downloaded content to database for race ID {race.Id}");
+                                    }
+                                    else
+                                    {
+                                        throw new InvalidOperationException($"Failed to re-download from URL: HTTP {response.StatusCode}");
+                                    }
+                                }
+
+                                // Check if we have content to process
+                                if (contentToProcess == null || contentToProcess.Length == 0)
+                                {
+                                    throw new InvalidOperationException($"No file content available for {race.DistanceKm}km race. Cannot reprocess.");
+                                }
+
+                                // Write file content to temporary file for processing
                                 var fileStorageService = new FileStorageService();
-                                tempFilePath = fileStorageService.WriteToTempFile(race.FileContent, race.FileName);
+                                tempFilePath = fileStorageService.WriteToTempFile(contentToProcess, race.FileName);
 
                                 // Delete existing classifications for this race
                                 _classificationRepository.DeleteClassificationsByRace(race.Id);
@@ -625,12 +662,17 @@ namespace NameParser.UI.ViewModels
                                 var allMembers = memberService.GetAllMembersAndChallengers();
 
                                 // Select appropriate parser based on file extension
-                                var extension = race.FileExtension.ToLowerInvariant();
+                                var extension = fileExtension.ToLowerInvariant();
                                 IRaceResultRepository raceResultRepository;
 
                                 if (extension == ".pdf")
                                 {
                                     raceResultRepository = new PdfRaceResultRepository();
+                                }
+                                else if (extension == ".json")
+                                {
+                                    // Cached ACN Timing URL content
+                                    raceResultRepository = new AcnTimingRaceResultRepository();
                                 }
                                 else
                                 {

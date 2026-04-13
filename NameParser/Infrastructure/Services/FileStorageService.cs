@@ -42,13 +42,55 @@ namespace NameParser.Infrastructure.Services
                 Directory.CreateDirectory(tempDirectory);
             }
 
+            // Sanitize fileName to remove invalid file system characters
+            // This handles cases where fileName might be a URL or contain special characters
+            var sanitizedFileName = SanitizeFileName(fileName);
+
             // Generate unique temp file path
-            var tempFilePath = Path.Combine(tempDirectory, $"{Guid.NewGuid()}_{fileName}");
+            var tempFilePath = Path.Combine(tempDirectory, $"{Guid.NewGuid()}_{sanitizedFileName}");
 
             // Write bytes to temp file
             File.WriteAllBytes(tempFilePath, fileContent);
 
             return tempFilePath;
+        }
+
+        /// <summary>
+        /// Sanitizes a filename by removing or replacing invalid file system characters
+        /// </summary>
+        private string SanitizeFileName(string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return "temp_file";
+            }
+
+            // Remove or replace invalid characters for Windows file systems
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var sanitized = fileName;
+
+            foreach (var c in invalidChars)
+            {
+                sanitized = sanitized.Replace(c, '_');
+            }
+
+            // Additional cleanup for common URL characters that might not be in GetInvalidFileNameChars
+            sanitized = sanitized.Replace(":", "_")
+                                 .Replace("?", "_")
+                                 .Replace("&", "_")
+                                 .Replace("=", "_")
+                                 .Replace("/", "_")
+                                 .Replace("\\", "_");
+
+            // Limit filename length to avoid path too long errors (max 200 chars)
+            if (sanitized.Length > 200)
+            {
+                var extension = Path.GetExtension(sanitized);
+                var nameWithoutExtension = Path.GetFileNameWithoutExtension(sanitized);
+                sanitized = nameWithoutExtension.Substring(0, Math.Min(nameWithoutExtension.Length, 200 - extension.Length)) + extension;
+            }
+
+            return sanitized;
         }
 
         /// <summary>
