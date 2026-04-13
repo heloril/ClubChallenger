@@ -101,6 +101,7 @@ namespace NameParser.UI.ViewModels
             ExportMultipleForEmailCommand = new RelayCommand(ExecuteExportMultipleForEmail, CanExecuteExportMultipleForEmail);
             RefreshRacesCommand = new RelayCommand(ExecuteRefreshRaces);
             DeleteRaceCommand = new RelayCommand(ExecuteDeleteRace, CanExecuteDeleteRace);
+            DeleteClassificationCommand = new RelayCommand<ClassificationEntity>(ExecuteDeleteClassification);
             ViewClassificationCommand = new RelayCommand(ExecuteViewClassification, CanExecuteViewClassification);
             ViewChallengerClassificationCommand = new RelayCommand(ExecuteViewChallengerClassification);
             ExportChallengerClassificationCommand = new RelayCommand(ExecuteExportChallengerClassification, CanExecuteExportChallengerClassification);
@@ -350,6 +351,7 @@ namespace NameParser.UI.ViewModels
         public ICommand ExportMultipleForEmailCommand { get; }
         public ICommand RefreshRacesCommand { get; }
         public ICommand DeleteRaceCommand { get; }
+        public ICommand DeleteClassificationCommand { get; }
         public ICommand ViewClassificationCommand { get; }
         public ICommand ViewChallengerClassificationCommand { get; }
         public ICommand ExportChallengerClassificationCommand { get; }
@@ -1809,6 +1811,36 @@ namespace NameParser.UI.ViewModels
                 {
                     StatusMessage = $"Error deleting race: {ex.Message}";
                     MessageBox.Show($"Error deleting race: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void ExecuteDeleteClassification(ClassificationEntity classification)
+        {
+            if (classification == null) return;
+
+            var result = MessageBox.Show(
+                $"Are you sure you want to delete this race result?\n\n" +
+                $"Participant: {classification.MemberFirstName} {classification.MemberLastName}\n" +
+                $"Position: {classification.Position}\n" +
+                $"Time: {classification.RaceTime?.ToString(@"hh\:mm\:ss")}\n\n" +
+                $"This action cannot be undone.",
+                "Confirm Delete",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    _classificationRepository.DeleteClassification(classification.Id);
+                    Classifications.Remove(classification);
+                    StatusMessage = $"Race result for {classification.MemberFirstName} {classification.MemberLastName} deleted successfully.";
+                }
+                catch (Exception ex)
+                {
+                    StatusMessage = $"Error deleting race result: {ex.Message}";
+                    MessageBox.Show($"Error deleting race result: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }

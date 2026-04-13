@@ -134,6 +134,19 @@ namespace NameParser.Infrastructure.Data
             }
         }
 
+        public void DeleteClassification(int classificationId)
+        {
+            using (var context = new RaceManagementContext())
+            {
+                var classification = context.Classifications.Find(classificationId);
+                if (classification != null)
+                {
+                    context.Classifications.Remove(classification);
+                    context.SaveChanges();
+                }
+            }
+        }
+
         public List<ChallengerClassificationDto> GetChallengerClassification(int year)
         {
             using (var context = new RaceManagementContext())

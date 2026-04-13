@@ -435,6 +435,23 @@
                                     <DataGridCheckBoxColumn Header="{Binding DataContext.Localization[Member], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding IsMember}" Width="70" IsReadOnly="True"/>
                                     <DataGridCheckBoxColumn Header="{Binding DataContext.Localization[Challenger], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding IsChallenger}" Width="80" IsReadOnly="True"/>
                                     <DataGridTextColumn Header="{Binding DataContext.Localization[BonusKM], RelativeSource={RelativeSource AncestorType=Window}}" Binding="{Binding BonusKm}" Width="90"/>
+
+                                    <!-- Delete Button Column -->
+                                    <DataGridTemplateColumn Header="Delete" Width="60">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button Content="🗑️" 
+                                                        Command="{Binding DataContext.DeleteClassificationCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="Delete this race result"
+                                                        Background="#F44336"
+                                                        Foreground="White"
+                                                        Padding="5,2"
+                                                        MinWidth="40"
+                                                        Margin="2"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Grid>
