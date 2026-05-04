@@ -51,37 +51,88 @@ namespace NameParser.Infrastructure.Data
                 }
                 else
                 {
-                    // For URLs, download and cache the content for future reprocessing
+                    // For URLs, use AcnTimingRaceResultRepository to download via API
                     try
                     {
-                        System.Diagnostics.Debug.WriteLine($"Downloading and caching content from URL: {filePath}");
-                        var httpClient = new System.Net.Http.HttpClient();
-                        httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-                        httpClient.DefaultRequestHeaders.Add("Accept", "application/json, text/html, */*");
+                        System.Diagnostics.Debug.WriteLine($"Downloading and caching content from ACN-Timing URL: {filePath}");
 
-                        var response = httpClient.GetAsync(filePath).GetAwaiter().GetResult();
-                        if (response.IsSuccessStatusCode)
+                        // Use AcnTimingRaceResultRepository to handle API calls properly
+                        var acnTimingRepo = new NameParser.Infrastructure.Repositories.AcnTimingRaceResultRepository();
+
+                        // Call GetRaceResults which will handle URL parsing, API calls, and return results
+                        // We pass an empty members list here since we only want to cache the data, not process it yet
+                        var tempResults = acnTimingRepo.GetRaceResults(filePath, new System.Collections.Generic.List<NameParser.Domain.Entities.Member>());
+
+                        if (tempResults != null && tempResults.Count > 1) // More than just header
                         {
-                            var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                            // The repository successfully downloaded and parsed the data
+                            // Now we need to get the raw JSON content that was downloaded
+                            // Since GetRaceResults returns parsed data, we need to re-download the raw JSON
 
-                            // Store as JSON since most ACN Timing URLs return JSON
-                            fileContent = System.Text.Encoding.UTF8.GetBytes(content);
-                            fileName = filePath; // Store the original URL for reference
-                            fileExtension = ".json"; // Mark as JSON for proper parsing
+                            var httpClient = new System.Net.Http.HttpClient();
+                            httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+                            httpClient.DefaultRequestHeaders.Add("Accept", "application/json, text/html, */*");
 
-                            System.Diagnostics.Debug.WriteLine($"Successfully cached {fileContent.Length} bytes from URL");
+                            // Parse the URL to get the API endpoint
+                            string apiUrl = null;
+                            if (filePath.Contains("acn-timing.com"))
+                            {
+                                // Extract context and viewId from ACN-Timing URL
+                                var match = System.Text.RegularExpressions.Regex.Match(filePath, @"ctx/([^/]+)/generic/[^/]+/home/([^/\?]+)");
+                                if (match.Success)
+                                {
+                                    var contextValue = match.Groups[1].Value;
+                                    var viewId = match.Groups[2].Value;
+                                    apiUrl = $"https://results.chronorace.be/api/results/table/search/{contextValue}/{viewId}?srch=&pageSize=1000";
+                                }
+                            }
+                            else if (filePath.Contains("chronorace.be/api"))
+                            {
+                                // Already an API URL
+                                apiUrl = filePath;
+                                if (!apiUrl.Contains("?"))
+                                {
+                                    apiUrl += "?srch=&pageSize=1000";
+                                }
+                            }
+
+                            if (!string.IsNullOrEmpty(apiUrl))
+                            {
+                                System.Diagnostics.Debug.WriteLine($"Fetching raw JSON from API: {apiUrl}");
+                                var response = httpClient.GetAsync(apiUrl).GetAwaiter().GetResult();
+                                if (response.IsSuccessStatusCode)
+                                {
+                                    var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                                    fileContent = System.Text.Encoding.UTF8.GetBytes(content);
+                                    fileName = filePath; // Store the original URL for reference
+                                    fileExtension = ".json"; // Mark as JSON for proper parsing
+                                    System.Diagnostics.Debug.WriteLine($"Successfully cached {fileContent.Length} bytes from API");
+                                }
+                                else
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"Failed to download API content: HTTP {response.StatusCode}");
+                                    fileName = filePath;
+                                    fileExtension = ".url";
+                                }
+                            }
+                            else
+                            {
+                                // Could not parse URL, but validation passed, so store URL reference
+                                System.Diagnostics.Debug.WriteLine($"Could not extract API URL from: {filePath}");
+                                fileName = filePath;
+                                fileExtension = ".url";
+                            }
                         }
                         else
                         {
-                            System.Diagnostics.Debug.WriteLine($"Failed to download URL content: HTTP {response.StatusCode}");
-                            // Store URL info even if download fails, for future re-download attempts
+                            System.Diagnostics.Debug.WriteLine($"ACN-Timing repository returned no results for URL: {filePath}");
                             fileName = filePath;
                             fileExtension = ".url";
                         }
                     }
                     catch (System.Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"Error caching URL content: {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine($"Error caching ACN-Timing URL content: {ex.Message}");
                         // Store URL info even if caching fails
                         fileName = filePath;
                         fileExtension = ".url";

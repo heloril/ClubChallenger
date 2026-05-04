@@ -492,17 +492,31 @@ namespace NameParser.UI.ViewModels
                     var memberService = new MemberService(memberRepository, challengerRepository);
                     var allMembers = memberService.GetAllMembersAndChallengers();
 
-                    // Select appropriate parser based on file extension
-                    var extension = Path.GetExtension(SelectedFilePath).ToLowerInvariant();
+                    // Select appropriate parser based on file type (URL or local file)
                     IRaceResultRepository raceResultRepository;
 
-                    if (extension == ".pdf")
+                    // Check if input is a URL (ACN-Timing or chronorace.be)
+                    bool isUrl = SelectedFilePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                                 SelectedFilePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+                    if (isUrl)
                     {
-                        raceResultRepository = new PdfRaceResultRepository();
+                        // Use ACN-Timing parser for URLs
+                        raceResultRepository = new AcnTimingRaceResultRepository();
                     }
                     else
                     {
-                        raceResultRepository = new ExcelRaceResultRepository();
+                        // For local files, select parser based on file extension
+                        var extension = Path.GetExtension(SelectedFilePath).ToLowerInvariant();
+
+                        if (extension == ".pdf")
+                        {
+                            raceResultRepository = new PdfRaceResultRepository();
+                        }
+                        else
+                        {
+                            raceResultRepository = new ExcelRaceResultRepository();
+                        }
                     }
 
                     var pointsCalculationService = new PointsCalculationService();
@@ -646,8 +660,9 @@ namespace NameParser.UI.ViewModels
                                 }
 
                                 // Write file content to temporary file for processing
+                                // Use a sanitized name with the correct extension (race.FileName may be a URL)
                                 var fileStorageService = new FileStorageService();
-                                tempFilePath = fileStorageService.WriteToTempFile(contentToProcess, race.FileName);
+                                tempFilePath = fileStorageService.WriteToTempFile(contentToProcess, $"race_{race.Id}{fileExtension}");
 
                                 // Delete existing classifications for this race
                                 _classificationRepository.DeleteClassificationsByRace(race.Id);

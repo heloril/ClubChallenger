@@ -193,10 +193,11 @@ namespace NameParser.Infrastructure.Repositories
                 var apiUrls = new[]
                 {
                     // Primary chronorace.be API endpoint
-                    $"https://results.chronorace.be/api/results/table/search/{urlInfo.Context}/{urlInfo.ViewId}?srch=&pageSize=1000",
+                    // pageSize=10000 ensures all participants are fetched (some races exceed 2000 entries)
+                    $"https://results.chronorace.be/api/results/table/search/{urlInfo.Context}/{urlInfo.ViewId}?srch=&pageSize=10000",
 
                     // Fallback patterns if the primary doesn't work
-                    $"https://results.chronorace.be/api/results/table/search/{urlInfo.Context}/{urlInfo.RaceId}?srch=&pageSize=1000",
+                    $"https://results.chronorace.be/api/results/table/search/{urlInfo.Context}/{urlInfo.RaceId}?srch=&pageSize=10000",
                     $"https://results.chronorace.be/api/results/{urlInfo.Context}/{urlInfo.ViewId}",
                 };
 
@@ -369,20 +370,61 @@ namespace NameParser.Infrastructure.Repositories
                 TimeSpan? paceTime = ParseTime(paceStr);
                 double? speed = ParseSpeed(speedStr);
 
-                // Build result string
-                return $"{position ?? 0}{Separator}" +
-                       $"{fullName}{Separator}" +
-                       $"{firstName}{Separator}" +
-                       $"{lastName}{Separator}" +
-                       $"{team}{Separator}" +
-                       $"{FormatTimeSpan(raceTime)}{Separator}" +
-                       $"{FormatTimeSpan(paceTime)}{Separator}" +
-                       $"{FormatSpeed(speed)}{Separator}" +
-                       $"{isMember}{Separator}" +
-                       $"{sex}{Separator}" +
-                       $"{sexPosition ?? 0}{Separator}" +
-                       $"{category}{Separator}" +
-                       $"{categoryPosition ?? 0}";
+                // Build result string in keyword format matching ParseChronoraceResults output
+                // so that RaceProcessingService.ParseRaceResult can process it correctly.
+                var resultBuilder = new System.Text.StringBuilder();
+
+                resultBuilder.Append(isMember ? "TMEM;" : "TWINNER;");
+
+                if (raceTime.HasValue)
+                {
+                    resultBuilder.Append($"RACETIME;{FormatTimeSpan(raceTime)};");
+                }
+
+                if (paceTime.HasValue)
+                {
+                    resultBuilder.Append($"TIMEPERKM;{FormatTimeSpan(paceTime)};");
+                }
+
+                if (position.HasValue)
+                {
+                    resultBuilder.Append($"POS;{position};");
+                }
+
+                if (speed.HasValue)
+                {
+                    resultBuilder.Append($"SPEED;{FormatSpeed(speed)};");
+                }
+
+                if (!string.IsNullOrWhiteSpace(sex))
+                {
+                    resultBuilder.Append($"SEX;{sex};");
+                }
+
+                if (sexPosition.HasValue)
+                {
+                    resultBuilder.Append($"POSITIONSEX;{sexPosition};");
+                }
+
+                if (!string.IsNullOrWhiteSpace(category))
+                {
+                    resultBuilder.Append($"CATEGORY;{category};");
+                }
+
+                if (categoryPosition.HasValue)
+                {
+                    resultBuilder.Append($"POSITIONCAT;{categoryPosition};");
+                }
+
+                if (!string.IsNullOrWhiteSpace(team))
+                {
+                    resultBuilder.Append($"TEAM;{team};");
+                }
+
+                resultBuilder.Append($"ISMEMBER;{(isMember ? "1" : "0")};");
+                resultBuilder.Append($"{firstName};{lastName}");
+
+                return resultBuilder.ToString();
             }
             catch
             {
@@ -435,14 +477,21 @@ namespace NameParser.Infrastructure.Repositories
 
                 try
                 {
-                    // Detect format by checking if index 3 contains HTML tags
-                    bool isHtmlFormat = cells.Count >= 4 && cells[3].Contains("<");
+                    // Detect format by structure:
+                    // 1. OldHtmlFormat  : cells[3] contains HTML tags — [pos,sex,bib,nameHTML,country,sex2,...,status,timeHTML,catPos,cat,...]
+                    // 2. ShortNewHtml  : cells[2] contains HTML, count ≤ 16 — [pos,bib,nameHTML,country,sex,status,timeHTML,catPos,cat,...]
+                    // 3. ExtendedNewHtml: cells[2] contains HTML, count > 16  — [pos,bib,nameHTML,country,sex,counters×6,status,timeHTML,catPos,cat,...]
+                    // 4. CleanFormat   : no HTML — [pos,bib,name,team,country,sex,...,status,time,?,speed,catPos,cat,...]
+                    bool isOldHtmlFormat = cells.Count >= 4 && cells[3].Contains("<");
+                    bool isNewHtmlFormat = !isOldHtmlFormat && cells.Count >= 9 && cells[2].Contains("<");
+                    bool isShortNewHtmlFormat = isNewHtmlFormat && cells.Count <= 16;
+                    bool isExtendedNewHtmlFormat = isNewHtmlFormat && cells.Count > 16;
 
                     string positionStr, bib, nameRaw, team, country, sex, status, timeStr, speedStr, categoryPositionStr, category;
 
-                    if (isHtmlFormat)
+                    if (isOldHtmlFormat)
                     {
-                        // HTML format (old style)
+                        // OldHtmlFormat: [pos,sex,bib,nameHTML,country,sex2,?,?,status,timeHTML,catPos,cat,detail,?,bib2]
                         positionStr = cells[0].TrimEnd('.');
                         sex = cells[1];
                         bib = cells[2];
@@ -461,11 +510,70 @@ namespace NameParser.Infrastructure.Repositories
                         var speedMatch = Regex.Match(timeHtml, @"([\d.]+)\s*km/h");
                         speedStr = speedMatch.Success ? speedMatch.Groups[1].Value : "";
 
-                        team = country; // Use country as team for HTML format
+                        // Extract team from <small> in nameRaw if present
+                        var smallMatchOld = Regex.Match(nameRaw, @"<small>([^<]*)</small>");
+                        team = smallMatchOld.Success && !string.IsNullOrWhiteSpace(smallMatchOld.Groups[1].Value)
+                            ? smallMatchOld.Groups[1].Value.Trim()
+                            : country;
+                    }
+                    else if (isShortNewHtmlFormat)
+                    {
+                        // ShortNewHtmlFormat (16 cols): [pos,bib,nameHTML,country,sex,status,timeHTML,catPos,cat,sportogr,sporto,detail,?,diplome,?,bib2]
+                        positionStr = cells[0].TrimEnd('.');
+                        bib = cells[1];
+                        nameRaw = cells[2];
+                        country = cells[3];
+                        sex = cells[4];
+                        status = cells[5];
+                        var timeHtml = cells[6];
+                        categoryPositionStr = cells[7];
+                        category = cells[8];
+
+                        // Parse time from HTML
+                        var timeMatch = Regex.Match(timeHtml, @"<b>([^<]+)</b>");
+                        timeStr = timeMatch.Success ? timeMatch.Groups[1].Value : "";
+
+                        // Parse speed from HTML
+                        var speedMatch = Regex.Match(timeHtml, @"([\d.]+)\s*km/h");
+                        speedStr = speedMatch.Success ? speedMatch.Groups[1].Value : "";
+
+                        // Extract team from <small> in nameRaw if present
+                        var smallMatch = Regex.Match(nameRaw, @"<small>([^<]*)</small>");
+                        team = smallMatch.Success && !string.IsNullOrWhiteSpace(smallMatch.Groups[1].Value)
+                            ? smallMatch.Groups[1].Value.Trim()
+                            : country;
+                    }
+                    else if (isExtendedNewHtmlFormat)
+                    {
+                        // ExtendedNewHtmlFormat (21-22 cols): [pos,bib,nameHTML,country,sex,c1,c2,c3,c4,c5,c6,status,timeHTML,catPos,cat,...]
+                        positionStr = cells[0].TrimEnd('.');
+                        bib = cells[1];
+                        nameRaw = cells[2];
+                        country = cells[3];
+                        sex = cells[4];
+                        // cells[5..10] are numeric ranking counters
+                        status = cells.Count > 11 ? cells[11] : "";
+                        var timeHtml = cells.Count > 12 ? cells[12] : "";
+                        categoryPositionStr = cells.Count > 13 ? cells[13] : "";
+                        category = cells.Count > 14 ? cells[14] : "";
+
+                        // Parse time from HTML
+                        var timeMatch = Regex.Match(timeHtml, @"<b>([^<]+)</b>");
+                        timeStr = timeMatch.Success ? timeMatch.Groups[1].Value : "";
+
+                        // Parse speed from HTML
+                        var speedMatch = Regex.Match(timeHtml, @"([\d.]+)\s*km/h");
+                        speedStr = speedMatch.Success ? speedMatch.Groups[1].Value : "";
+
+                        // Extract team from <small> in nameRaw if present
+                        var smallMatchExt = Regex.Match(nameRaw, @"<small>([^<]*)</small>");
+                        team = smallMatchExt.Success && !string.IsNullOrWhiteSpace(smallMatchExt.Groups[1].Value)
+                            ? smallMatchExt.Groups[1].Value.Trim()
+                            : country;
                     }
                     else
                     {
-                        // Clean format (new style)
+                        // CleanFormat
                         positionStr = cells[0].TrimEnd('.');
                         bib = cells[1];
                         nameRaw = cells[2];
@@ -501,8 +609,11 @@ namespace NameParser.Infrastructure.Repositories
                         sexPosition = sexPositionCounters[sex];
                     }
 
-                    // Strip HTML tags from name if present
-                    var fullName = StripHtmlTags(nameRaw);
+                    // Strip HTML tags from name: use only <b> content to avoid including team from <small> tag
+                    // e.g. "<b>LAMBERT Jean</b><br/><small>WACO</small>" → "LAMBERT Jean", not "LAMBERT Jean WACO"
+                    var fullName = nameRaw.Contains("<b>")
+                        ? System.Net.WebUtility.HtmlDecode(Regex.Match(nameRaw, @"<b>([^<]+)</b>").Groups[1].Value.Trim())
+                        : StripHtmlTags(nameRaw);
 
                     // Parse category position
                     int? categoryPosition = null;

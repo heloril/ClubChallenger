@@ -126,7 +126,7 @@ namespace NameParser.Tests.Infrastructure.Repositories
 
                 // Assert
                 var resultWithMember = string.Join("\n", results.Values);
-                Assert.Contains("True", resultWithMember); // IsMember flag should be True
+                Assert.Contains("ISMEMBER;1;", resultWithMember); // IsMember flag should be 1 (true)
             }
             finally
             {
@@ -294,7 +294,7 @@ namespace NameParser.Tests.Infrastructure.Repositories
                 // Assert
                 Assert.NotNull(results);
                 Assert.Contains(results.Values, r => r.Contains("Test") && r.Contains("User"));
-                Assert.Contains(results.Values, r => r.Contains("False")); // IsMember should be False
+                Assert.Contains(results.Values, r => r.Contains("ISMEMBER;0;")); // IsMember should be 0 (false)
             }
             finally
             {
@@ -453,6 +453,255 @@ namespace NameParser.Tests.Infrastructure.Repositories
             finally
             {
                 File.Delete(tempFile);
+            }
+        }
+
+        [Fact]
+        public void ParseAcnTimingUrl_NewFormat_LIVEKIDS11()
+        {
+            // Real API format for LIVEKIDS11: ShortNewHtmlFormat (16 columns)
+            // [pos, bib, "<b>NAME</b><br/><small>team</small>", country, sex, status, "<b>time</b><br/><small>speed km/h</small>", catPos, cat, sportogr, img, detail, ?, diplome, ?, bib2]
+            // https://www.acn-timing.com/?lng=FR#/events/2141599542988686/ctx/20260503_vise/generic/198020_11/home/LIVEKIDS11
+            var jsonContent = @"{
+                ""Groups"": [
+                    {
+                        ""SlaveRows"": [
+                            [""1."",""5281"",""<b>DELVAUX Loic</b><br/><small>TRAKKS TEAM ELITE</small>"",""BEL"",""M"",""Finish"",""<b>0:14:56</b><br/><small>  20.1km/h</small>"",""1"",""SEH"",""https://www.sportograf.com/en/event/20142/search/5281"",""sporto20.jpg"",""detail:5281"","""","""","""",""5281""],
+                            [""2."",""5400"",""<b>MARTIN Sophie</b><br/><small>RIWA</small>"",""BEL"",""F"",""Finish"",""<b>0:15:30</b><br/><small>  19.4km/h</small>"",""1"",""SEF"",""https://www.sportograf.com/en/event/20142/search/5400"",""sporto20.jpg"",""detail:5400"","""","""","""",""5400""],
+                            [""3."",""5101"",""<b>DUBOIS Thomas</b><br/><small>ACLO</small>"",""BEL"",""M"",""Finish"",""<b>0:15:45</b><br/><small>  19.1km/h</small>"",""2"",""SEH"",""https://www.sportograf.com/en/event/20142/search/5101"",""sporto20.jpg"",""detail:5101"","""","""","""",""5101""],
+                            [""-"",""5999"",""<b>LEFEBVRE Emma</b><br/><small>WACO</small>"",""BEL"",""F"",""DNS"","""","""",""SEF"","""","""","""","""","""","""",""5999""]
+                        ],
+                        ""MasterRows"": null
+                    }
+                ],
+                ""Count"": 4
+            }";
+
+            var tempFile = Path.GetTempFileName();
+            File.WriteAllText(tempFile + ".json", jsonContent);
+
+            try
+            {
+                var results = _repository.GetRaceResults(tempFile + ".json", _testMembers);
+
+                Assert.NotNull(results);
+                Assert.True(results.Count >= 4); // Header + at least 3 finishers + 1 DNS
+
+                var resultString = string.Join("\n", results.Values);
+
+                // Verify HTML tags are stripped from names
+                Assert.DoesNotContain("<b>", resultString);
+                Assert.Contains("DELVAUX", resultString);
+                Assert.Contains("Loic", resultString);
+
+                // Verify positions and times for finishers
+                Assert.Contains("POS;1;", resultString);
+                Assert.Contains("POS;2;", resultString);
+                Assert.Contains("POS;3;", resultString);
+                Assert.Contains("14:56", resultString);
+                Assert.Contains("15:30", resultString);
+
+                // Verify speed extraction from time HTML
+                Assert.Contains("20.10", resultString);
+
+                // Verify category
+                Assert.Contains("SEH", resultString);
+                Assert.Contains("SEF", resultString);
+
+                // DNS participant included but without position
+                Assert.Contains("LEFEBVRE", resultString);
+                var lefebvreLines = resultString.Split('\n').Where(l => l.Contains("LEFEBVRE"));
+                foreach (var line in lefebvreLines)
+                    Assert.DoesNotContain("POS;", line);
+            }
+            finally
+            {
+                File.Delete(tempFile + ".json");
+            }
+        }
+
+        [Fact]
+        public void ParseAcnTimingUrl_NewFormat_LIVEKIDS12()
+        {
+            // Real API format for LIVEKIDS12: ShortNewHtmlFormat (16 columns)
+            // https://www.acn-timing.com/?lng=FR#/events/2141599542988686/ctx/20260503_vise/generic/198020_12/home/LIVEKIDS12
+            var jsonContent = @"{
+                ""Groups"": [
+                    {
+                        ""SlaveRows"": [
+                            [""1."",""10970"",""<b>DEFLANDRE Clement</b><br/><small></small>"",""BEL"",""M"",""Finish"",""<b>0:32:15</b><br/><small>  18.6km/h</small>"",""1"",""SEH"",""https://www.sportograf.com/en/event/20142/search/10970"",""sporto20.jpg"",""detail:10970"","""",""https://prod.chronorace.be/classements/classementpdf.aspx"","""",""10970""],
+                            [""2."",""10820"",""<b>LAURENT Clara</b><br/><small>RIWA</small>"",""BEL"",""F"",""Finish"",""<b>0:33:40</b><br/><small>  17.8km/h</small>"",""1"",""SEF"",""https://www.sportograf.com/en/event/20142/search/10820"",""sporto20.jpg"",""detail:10820"","""","""","""",""10820""],
+                            [""50."",""10500"",""<b>PEETERS Maxime</b><br/><small>WACO</small>"",""BEL"",""M"",""Finish"",""<b>0:45:00</b><br/><small>  13.3km/h</small>"",""20"",""V1H"",""https://www.sportograf.com/en/event/20142/search/10500"",""sporto20.jpg"",""detail:10500"","""","""","""",""10500""],
+                            [""-"",""10001"",""<b>BERNARD Alice</b><br/><small>JSMC</small>"",""BEL"",""F"",""DNF"","""","""",""SEF"","""","""","""","""","""","""",""10001""]
+                        ],
+                        ""MasterRows"": null
+                    }
+                ],
+                ""Count"": 4
+            }";
+
+            var tempFile = Path.GetTempFileName();
+            File.WriteAllText(tempFile + ".json", jsonContent);
+
+            try
+            {
+                var results = _repository.GetRaceResults(tempFile + ".json", _testMembers);
+
+                Assert.NotNull(results);
+                Assert.True(results.Count >= 4);
+
+                var resultString = string.Join("\n", results.Values);
+
+                Assert.DoesNotContain("<b>", resultString);
+                Assert.Contains("DEFLANDRE", resultString);
+                Assert.Contains("LAURENT", resultString);
+                Assert.Contains("POS;1;", resultString);
+                Assert.Contains("POS;50;", resultString);
+                Assert.Contains("32:15", resultString);
+                Assert.Contains("SEH", resultString);
+                Assert.Contains("SEF", resultString);
+                Assert.Contains("V1H", resultString);
+
+                // DNF participant included but without position
+                Assert.Contains("BERNARD", resultString);
+                var bernardLines = resultString.Split('\n').Where(l => l.Contains("BERNARD"));
+                foreach (var line in bernardLines)
+                    Assert.DoesNotContain("POS;", line);
+            }
+            finally
+            {
+                File.Delete(tempFile + ".json");
+            }
+        }
+
+        [Fact]
+        public void ParseAcnTimingUrl_NewFormat_LIVE14()
+        {
+            // Real API format for LIVE14: ExtendedNewHtmlFormat (22 columns)
+            // [pos, bib, nameHTML, country, sex, c1,c2,c3,c4,c5,c6, status, timeHTML, catPos, cat, sportogr, img, detail, diplome, pdf, ?, bib2]
+            // https://www.acn-timing.com/?lng=FR#/events/2141599542988686/ctx/20260503_vise/generic/197994_14/home/LIVE14
+            var jsonContent = @"{
+                ""Groups"": [
+                    {
+                        ""SlaveRows"": [
+                            [""1."",""1"",""<b>SIMONS Stef</b><br/><small>KINEPUNT</small>"",""BEL"",""M"",""2"",""2126993"",""2"",""4001853"",""1"",""6321393"",""Finish"",""<b>0:48:25</b><br/><small>  17.4km/h</small>"",""1"",""SEH"",""https://www.sportograf.com/en/event/20142/search/1"",""sporto20.jpg"",""detail:1"",""diplome.gif"",""https://prod.chronorace.be"","""",""1""],
+                            [""2."",""202"",""<b>JANSSENS Tom</b><br/><small>JSMC</small>"",""BEL"",""M"",""1"",""222000"",""1"",""300000"",""2"",""500000"",""Finish"",""<b>0:49:10</b><br/><small>  17.1km/h</small>"",""2"",""SEH"",""https://www.sportograf.com/en/event/20142/search/202"",""sporto20.jpg"",""detail:202"",""diplome.gif"","""","""",""202""],
+                            [""5."",""305"",""<b>MOREAU Sophie</b><br/><small>RIWA</small>"",""BEL"",""F"",""1"",""100000"",""1"",""200000"",""1"",""300000"",""Finish"",""<b>0:52:30</b><br/><small>  16.0km/h</small>"",""1"",""SEF"",""https://www.sportograf.com/en/event/20142/search/305"",""sporto20.jpg"",""detail:305"",""diplome.gif"","""","""",""305""],
+                            [""100."",""3100"",""<b>LAMBERT Jean</b><br/><small>WACO</small>"",""BEL"",""M"",""35"",""700000"",""35"",""1000000"",""35"",""2000000"",""Finish"",""<b>1:15:20</b><br/><small>  11.1km/h</small>"",""35"",""V2H"",""https://www.sportograf.com/en/event/20142/search/3100"",""sporto20.jpg"",""detail:3100"",""diplome.gif"","""","""",""3100""],
+                            [""-"",""3201"",""<b>DUPONT Marie</b><br/><small>ACLO</small>"",""BEL"",""F"","""",""-"",""-"",""-"",""-"",""-"",null,null,""-"",""SEF"","""","""","""","""","""","""",""3201""]
+                        ],
+                        ""MasterRows"": null
+                    }
+                ],
+                ""Count"": 5
+            }";
+
+            var tempFile = Path.GetTempFileName();
+            File.WriteAllText(tempFile + ".json", jsonContent);
+
+            try
+            {
+                var results = _repository.GetRaceResults(tempFile + ".json", _testMembers);
+
+                Assert.NotNull(results);
+                Assert.True(results.Count >= 5);
+
+                var resultString = string.Join("\n", results.Values);
+
+                Assert.DoesNotContain("<b>", resultString);
+
+                // Verify categories
+                Assert.Contains("SEH", resultString);
+                Assert.Contains("SEF", resultString);
+                Assert.Contains("V2H", resultString);
+
+                // Verify positions
+                Assert.Contains("POS;1;", resultString);
+                Assert.Contains("POS;100;", resultString);
+
+                // Verify times
+                Assert.Contains("48:25", resultString);
+                Assert.Contains("1:15:20", resultString);
+
+                // Verify speed extracted from HTML
+                Assert.Contains("17.40", resultString);
+
+                // DNS participant included but without position
+                Assert.Contains("DUPONT", resultString);
+                var dupontLines = resultString.Split('\n').Where(l => l.Contains("DUPONT") && !l.Contains("Header"));
+                foreach (var line in dupontLines)
+                    Assert.DoesNotContain("POS;", line);
+            }
+            finally
+            {
+                File.Delete(tempFile + ".json");
+            }
+        }
+
+        [Fact]
+        public void ParseAcnTimingUrl_NewFormat_LIVEHALF13()
+        {
+            // Real API format for LIVEHALF13: ExtendedNewHtmlFormat (21 columns)
+            // https://www.acn-timing.com/?lng=FR#/events/2141599542988686/ctx/20260503_vise/generic/198023_13/home/LIVEHALF13
+            var jsonContent = @"{
+                ""Groups"": [
+                    {
+                        ""SlaveRows"": [
+                            [""1."",""3609"",""<b>PAQUET Amaury</b><br/><small></small>"",""BEL"",""M"",""1"",""222724"",""1"",""1735738"",""1"",""3492241"",""Finish"",""<b>1:10:26</b><br/><small>  18.0km/h</small>"",""1"",""H35"",""https://www.sportograf.com/en/event/20142/search/3609"",""sporto20.jpg"",""diplome.gif"",""https://prod.chronorace.be"","""",""3609""],
+                            [""2."",""4002"",""<b>DELFORGE Antoine</b><br/><small>RIWA</small>"",""BEL"",""M"",""2"",""300000"",""2"",""500000"",""2"",""900000"",""Finish"",""<b>1:12:10</b><br/><small>  17.5km/h</small>"",""2"",""H35"","""",""sporto20.jpg"",""diplome.gif"","""","""",""4002""],
+                            [""10."",""4010"",""<b>HENRION Sarah</b><br/><small>WACO</small>"",""BEL"",""F"",""1"",""100000"",""1"",""200000"",""1"",""300000"",""Finish"",""<b>1:20:05</b><br/><small>  15.8km/h</small>"",""1"",""SEF"","""",""sporto20.jpg"",""diplome.gif"","""","""",""4010""],
+                            [""500."",""4500"",""<b>SCHMITZ Marc</b><br/><small>JSMC</small>"",""BEL"",""M"",""120"",""700000"",""120"",""1000000"",""50"",""2000000"",""Finish"",""<b>2:10:30</b><br/><small>  9.7km/h</small>"",""50"",""V3H"","""",""sporto20.jpg"",""diplome.gif"","""","""",""4500""],
+                            [""1000."",""5000"",""<b>FONTAINE Claire</b><br/><small>ACLO</small>"",""BEL"",""F"",""250"",""900000"",""250"",""1500000"",""80"",""2500000"",""Finish"",""<b>2:45:30</b><br/><small>  7.6km/h</small>"",""80"",""V2F"","""",""sporto20.jpg"",""diplome.gif"","""","""",""5000""],
+                            [""-"",""5100"",""<b>LEONARD Thomas</b><br/><small>WACO</small>"",""BEL"",""M"","""",""-"",""-"",""-"",""-"",""-"",""DNF"",null,""-"",""V1H"","""","""","""","""","""",""5100""]
+                        ],
+                        ""MasterRows"": null
+                    }
+                ],
+                ""Count"": 6
+            }";
+
+            var tempFile = Path.GetTempFileName();
+            File.WriteAllText(tempFile + ".json", jsonContent);
+
+            try
+            {
+                var results = _repository.GetRaceResults(tempFile + ".json", _testMembers);
+
+                Assert.NotNull(results);
+                Assert.True(results.Count >= 6);
+
+                var resultString = string.Join("\n", results.Values);
+
+                Assert.DoesNotContain("<b>", resultString);
+
+                // Verify categories
+                Assert.Contains("H35", resultString);
+                Assert.Contains("SEF", resultString);
+                Assert.Contains("V3H", resultString);
+                Assert.Contains("V2F", resultString);
+                Assert.Contains("V1H", resultString);
+
+                // Verify position range (1 to 1000)
+                Assert.Contains("POS;1;", resultString);
+                Assert.Contains("POS;500;", resultString);
+                Assert.Contains("POS;1000;", resultString);
+
+                // Verify time range
+                Assert.Contains("1:10:26", resultString);
+                Assert.Contains("2:45:30", resultString);
+
+                // Verify speed extracted from HTML
+                Assert.Contains("18.00", resultString);
+
+                // DNF participant included but without position
+                Assert.Contains("LEONARD", resultString);
+                var leonardLines = resultString.Split('\n').Where(l => l.Contains("LEONARD") && !l.Contains("Header"));
+                foreach (var line in leonardLines)
+                    Assert.DoesNotContain("POS;", line);
+            }
+            finally
+            {
+                File.Delete(tempFile + ".json");
             }
         }
     }
