@@ -54,6 +54,14 @@ namespace NameParser.Infrastructure.Data
                 .HasForeignKey(c => c.RaceId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // Unique constraint on RaceId, MemberFirstName, MemberLastName, and Position
+            // This allows duplicate names with different positions in the same race
+            // but prevents exact duplicates at the same position
+            modelBuilder.Entity<ClassificationEntity>()
+                .HasIndex(c => new { c.RaceId, c.MemberFirstName, c.MemberLastName, c.Position })
+                .IsUnique()
+                .HasFilter("[Position] IS NOT NULL");
+
             // Challenge-RaceEvent many-to-many relationship
             modelBuilder.Entity<ChallengeRaceEventEntity>()
                 .HasOne(cre => cre.Challenge)

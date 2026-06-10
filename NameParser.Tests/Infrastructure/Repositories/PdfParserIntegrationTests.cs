@@ -47,8 +47,8 @@ namespace NameParser.Tests.Infrastructure.Repositories
                 new object[] { "20250511BlancGravierGC.pdf", "Grand Challenge Blanc Gravier", 10.00, 205, "GoalTimingFormatParser" },
                 
                 // Jogging de l'An Neuf races
-                new object[] { "Classement-10km-Jogging-de-lAn-Neuf.pdf", "Jogging de l'An Neuf 10km", 10.00, 354, "GlobalPacingFormatParser" },
-                new object[] { "Classement-5km-Jogging-de-lAn-Neuf.pdf", "Jogging de l'An Neuf 5km", 5.00, 190, "GlobalPacingFormatParser" },
+                new object[] { "Classement-10km-Jogging-de-lAn-Neuf.pdf", "Jogging de l'An Neuf 10km", 10.00, 352, "GlobalPacingFormatParser" },
+                new object[] { "Classement-5km-Jogging-de-lAn-Neuf.pdf", "Jogging de l'An Neuf 5km", 5.00, 191, "GlobalPacingFormatParser" },
                 
                 // Les 10 Miles races
                 new object[] { "2025-11-16_Les 10 Miles_Liège_CJPL_16.90.pdf", "Les 10 Miles 16.9km", 16.90, 217, "OtopFormatParser" },

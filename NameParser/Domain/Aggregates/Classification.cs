@@ -36,7 +36,7 @@ namespace NameParser.Domain.Aggregates
 
         public void AddOrUpdateResult(Member member, RaceDistance raceDistance, int points, TimeSpan? raceTime, TimeSpan? timePerKm, int? position, string team, double? speed, bool isMember, string sex, int? positionBySex, string ageCategory, int? positionByCategory)
         {
-            var key = GetKey(member, raceDistance);
+            var key = GetKey(member, raceDistance, position);
 
             if (_classifications.TryGetValue(key, out var existing))
             {
@@ -58,9 +58,9 @@ namespace NameParser.Domain.Aggregates
             return _classifications.Values.OrderBy(c => c.Member.LastName).ThenBy(c => c.Member.FirstName);
         }
 
-        public MemberClassification GetClassification(Member member, RaceDistance raceDistance)
+        public MemberClassification GetClassification(Member member, RaceDistance raceDistance, int? position = null)
         {
-            var key = GetKey(member, raceDistance);
+            var key = GetKey(member, raceDistance, position);
             return _classifications.TryGetValue(key, out var classification) ? classification : null;
         }
 
@@ -69,9 +69,11 @@ namespace NameParser.Domain.Aggregates
             return _classifications.Values.Select(c => c.RaceName).Distinct();
         }
 
-        private string GetKey(Member member, RaceDistance raceDistance)
+        private string GetKey(Member member, RaceDistance raceDistance, int? position)
         {
-            return $"{member.GetFullName()}_{raceDistance.Name}";
+            // Include position in the key to allow multiple people with the same name but different positions
+            var positionKey = position.HasValue ? position.Value.ToString() : "NoPosition";
+            return $"{member.GetFullName()}_{raceDistance.Name}_{positionKey}";
         }
     }
 

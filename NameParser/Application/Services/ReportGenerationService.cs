@@ -19,6 +19,7 @@ namespace NameParser.Application.Services
             var report = new StringBuilder();
             var members = _memberRepository.GetAll().OrderBy(m => m.LastName).ThenBy(m => m.FirstName);
             var distinctRaceNames = classification.GetDistinctRaceNames().ToList();
+            var allClassifications = classification.GetAllClassifications().ToList();
 
             foreach (var member in members)
             {
@@ -27,12 +28,19 @@ namespace NameParser.Application.Services
 
                 foreach (var raceName in distinctRaceNames)
                 {
-                    var raceDistance = new Domain.Entities.RaceDistance(0, raceName, 0);
-                    var memberClassification = classification.GetClassification(member, raceDistance);
+                    // Find all classifications for this member and race (can be multiple if same name, different positions)
+                    // Sum points and bonus km for all matching entries
+                    var memberClassifications = allClassifications
+                        .Where(c => c.Member.FirstName == member.FirstName && 
+                                    c.Member.LastName == member.LastName && 
+                                    c.RaceName == raceName)
+                        .ToList();
 
-                    if (memberClassification != null)
+                    if (memberClassifications.Any())
                     {
-                        line.Append($";{memberClassification.Points};{memberClassification.BonusKm}");
+                        var totalPoints = memberClassifications.Sum(c => c.Points);
+                        var totalBonusKm = memberClassifications.Sum(c => c.BonusKm);
+                        line.Append($";{totalPoints};{totalBonusKm}");
                     }
                     else
                     {

@@ -331,6 +331,22 @@ namespace NameParser.Infrastructure.Data
                             PRINT 'Unique index on RaceEventDistances created';
                         END";
                     command.ExecuteNonQuery();
+
+                    // Create unique index on Classifications to allow duplicate names with different positions
+                    command.CommandText = @"
+                        IF NOT EXISTS (
+                            SELECT * FROM sys.indexes 
+                            WHERE name = 'IX_Classifications_RaceId_MemberFirstName_MemberLastName_Position' 
+                            AND object_id = OBJECT_ID(N'[dbo].[Classifications]')
+                        )
+                        BEGIN
+                            -- Use filtered index to handle NULL positions
+                            CREATE UNIQUE NONCLUSTERED INDEX [IX_Classifications_RaceId_MemberFirstName_MemberLastName_Position]
+                            ON [dbo].[Classifications] ([RaceId], [MemberFirstName], [MemberLastName], [Position])
+                            WHERE [Position] IS NOT NULL;
+                            PRINT 'Unique index IX_Classifications_RaceId_MemberFirstName_MemberLastName_Position created';
+                        END";
+                    command.ExecuteNonQuery();
                 }
 
                 connection.Close();
