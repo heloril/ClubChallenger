@@ -501,8 +501,16 @@ namespace NameParser.UI.ViewModels
 
                     if (isUrl)
                     {
-                        // Use ACN-Timing parser for URLs
-                        raceResultRepository = new AcnTimingRaceResultRepository();
+                        if (OtopRaceResultRepository.IsOtopUrl(SelectedFilePath))
+                        {
+                            // O'Top presenter URLs expose several distances; select the one nearest the entered distance.
+                            raceResultRepository = new OtopRaceResultRepository(DistanceKm);
+                        }
+                        else
+                        {
+                            // Use ACN-Timing parser for other URLs
+                            raceResultRepository = new AcnTimingRaceResultRepository();
+                        }
                     }
                     else
                     {
@@ -625,31 +633,64 @@ namespace NameParser.UI.ViewModels
 
                             try
                             {
+                                // O'Top races: always re-fetch fresh from the presenter URL on reprocess.
+                                // The cached payload may be stale/empty (e.g. results not yet published when first saved),
+                                // and the presenter URL is stable, so a refresh is cheap and correct.
+                                if (OtopRaceResultRepository.IsOtopUrl(race.FileName))
+                                {
+                                    System.Diagnostics.Debug.WriteLine($"Re-downloading O'Top content from URL: {race.FileName}");
+
+                                    var otopDownloader = new OtopWebDownloader();
+                                    var payloadJson = otopDownloader.GetNearestDistancePayloadJson(race.FileName, race.DistanceKm);
+                                    contentToProcess = System.Text.Encoding.UTF8.GetBytes(payloadJson);
+                                    fileExtension = ".json";
+
+                                    System.Diagnostics.Debug.WriteLine($"Successfully re-downloaded {contentToProcess.Length} bytes from O'Top URL");
+
+                                    _raceRepository.UpdateRaceFileContent(race.Id, contentToProcess, fileExtension);
+                                    System.Diagnostics.Debug.WriteLine($"Cached downloaded content to database for race ID {race.Id}");
+                                }
                                 // If no cached content but we have a URL, try to re-download
-                                if ((contentToProcess == null || contentToProcess.Length == 0) && fileExtension == ".url")
+                                else if ((contentToProcess == null || contentToProcess.Length == 0) && fileExtension == ".url")
                                 {
                                     System.Diagnostics.Debug.WriteLine($"Re-downloading content from URL: {race.FileName}");
 
-                                    var httpClient = new System.Net.Http.HttpClient();
-                                    httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-                                    httpClient.DefaultRequestHeaders.Add("Accept", "application/json, text/html, */*");
-
-                                    var response = httpClient.GetAsync(race.FileName).GetAwaiter().GetResult();
-                                    if (response.IsSuccessStatusCode)
+                                    if (OtopRaceResultRepository.IsOtopUrl(race.FileName))
                                     {
-                                        var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-                                        contentToProcess = System.Text.Encoding.UTF8.GetBytes(content);
-                                        fileExtension = ".json"; // ACN Timing URLs typically return JSON
+                                        // O'Top presenter URL: fetch the nearest distance's normalized payload.
+                                        var otopDownloader = new OtopWebDownloader();
+                                        var payloadJson = otopDownloader.GetNearestDistancePayloadJson(race.FileName, race.DistanceKm);
+                                        contentToProcess = System.Text.Encoding.UTF8.GetBytes(payloadJson);
+                                        fileExtension = ".json";
 
-                                        System.Diagnostics.Debug.WriteLine($"Successfully re-downloaded {contentToProcess.Length} bytes from URL");
+                                        System.Diagnostics.Debug.WriteLine($"Successfully re-downloaded {contentToProcess.Length} bytes from O'Top URL");
 
-                                        // Save the downloaded content to the database to avoid re-downloading in the future
                                         _raceRepository.UpdateRaceFileContent(race.Id, contentToProcess, fileExtension);
                                         System.Diagnostics.Debug.WriteLine($"Cached downloaded content to database for race ID {race.Id}");
                                     }
                                     else
                                     {
-                                        throw new InvalidOperationException($"Failed to re-download from URL: HTTP {response.StatusCode}");
+                                        var httpClient = new System.Net.Http.HttpClient();
+                                        httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+                                        httpClient.DefaultRequestHeaders.Add("Accept", "application/json, text/html, */*");
+
+                                        var response = httpClient.GetAsync(race.FileName).GetAwaiter().GetResult();
+                                        if (response.IsSuccessStatusCode)
+                                        {
+                                            var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                                            contentToProcess = System.Text.Encoding.UTF8.GetBytes(content);
+                                            fileExtension = ".json"; // ACN Timing URLs typically return JSON
+
+                                            System.Diagnostics.Debug.WriteLine($"Successfully re-downloaded {contentToProcess.Length} bytes from URL");
+
+                                            // Save the downloaded content to the database to avoid re-downloading in the future
+                                            _raceRepository.UpdateRaceFileContent(race.Id, contentToProcess, fileExtension);
+                                            System.Diagnostics.Debug.WriteLine($"Cached downloaded content to database for race ID {race.Id}");
+                                        }
+                                        else
+                                        {
+                                            throw new InvalidOperationException($"Failed to re-download from URL: HTTP {response.StatusCode}");
+                                        }
                                     }
                                 }
 
@@ -686,8 +727,16 @@ namespace NameParser.UI.ViewModels
                                 }
                                 else if (extension == ".json")
                                 {
-                                    // Cached ACN Timing URL content
-                                    raceResultRepository = new AcnTimingRaceResultRepository();
+                                    // Cached URL content: detect O'Top normalized payload vs ACN/chronorace JSON.
+                                    var cachedContent = System.Text.Encoding.UTF8.GetString(contentToProcess);
+                                    if (OtopRaceResultRepository.IsOtopPayloadJson(cachedContent))
+                                    {
+                                        raceResultRepository = new OtopRaceResultRepository(race.DistanceKm);
+                                    }
+                                    else
+                                    {
+                                        raceResultRepository = new AcnTimingRaceResultRepository();
+                                    }
                                 }
                                 else
                                 {
@@ -2879,8 +2928,16 @@ namespace NameParser.UI.ViewModels
 
                             if (distanceUpload.IsUrl)
                             {
-                                // URL - use ACN Timing repository
-                                raceResultRepository = new AcnTimingRaceResultRepository();
+                                if (OtopRaceResultRepository.IsOtopUrl(distanceUpload.FilePath))
+                                {
+                                    // O'Top presenter URL - select the distance nearest this upload's distance
+                                    raceResultRepository = new OtopRaceResultRepository((double)distanceUpload.DistanceKm);
+                                }
+                                else
+                                {
+                                    // URL - use ACN Timing repository
+                                    raceResultRepository = new AcnTimingRaceResultRepository();
+                                }
                             }
                             else
                             {

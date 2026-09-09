@@ -51,9 +51,33 @@ namespace NameParser.Infrastructure.Data
                 }
                 else
                 {
-                    // For URLs, use AcnTimingRaceResultRepository to download via API
-                    try
+                    // O'Top presenter URLs expose several distances; cache the one nearest this race's distance.
+                    if (NameParser.Infrastructure.Repositories.OtopRaceResultRepository.IsOtopUrl(filePath))
                     {
+                        try
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Downloading and caching content from O'Top URL: {filePath}");
+
+                            var otopDownloader = new NameParser.Infrastructure.Services.OtopWebDownloader();
+                            var payloadJson = otopDownloader.GetNearestDistancePayloadJson(filePath, raceDistance.DistanceKm);
+
+                            fileContent = System.Text.Encoding.UTF8.GetBytes(payloadJson);
+                            fileName = filePath; // Store the original URL for reference
+                            fileExtension = ".json"; // Normalized O'Top payload, parsed by OtopRaceResultRepository
+                            System.Diagnostics.Debug.WriteLine($"Successfully cached {fileContent.Length} bytes from O'Top");
+                        }
+                        catch (System.Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Error caching O'Top URL content: {ex.Message}");
+                            fileName = filePath;
+                            fileExtension = ".url";
+                        }
+                    }
+                    else
+                    {
+                        // For URLs, use AcnTimingRaceResultRepository to download via API
+                        try
+                        {
                         System.Diagnostics.Debug.WriteLine($"Downloading and caching content from ACN-Timing URL: {filePath}");
 
                         // Use AcnTimingRaceResultRepository to handle API calls properly
@@ -136,6 +160,7 @@ namespace NameParser.Infrastructure.Data
                         // Store URL info even if caching fails
                         fileName = filePath;
                         fileExtension = ".url";
+                    }
                     }
                 }
 
