@@ -214,7 +214,7 @@ namespace NameParser.UI.ViewModels
             sb.AppendLine("<strong style='font-size: 16px; color: #FF9800;'>Mardi 17h00</strong>");
             sb.AppendLine("</div>");
             sb.AppendLine("<div style='margin-left: 40px;'>");
-            sb.AppendLine("<p style='margin: 5px 0; color: #555;'><strong>Lieu :</strong> Rendez-vous à la piste avec Fernand</p>");
+            sb.AppendLine("<p style='margin: 5px 0; color: #555;'><strong>Lieu :</strong> Rendez-vous à la piste</p>");
             sb.AppendLine("<p style='margin: 5px 0; color: #555; font-style: bold;'><strong>[Programme à définir]</strong></p>");
             sb.AppendLine("</div>");
             sb.AppendLine("</div>");

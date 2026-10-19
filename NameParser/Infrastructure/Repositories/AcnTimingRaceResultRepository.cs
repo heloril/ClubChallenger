@@ -193,11 +193,13 @@ namespace NameParser.Infrastructure.Repositories
                 var apiUrls = new[]
                 {
                     // Primary chronorace.be API endpoint
-                    // pageSize=10000 ensures all participants are fetched (some races exceed 2000 entries)
-                    $"https://results.chronorace.be/api/results/table/search/{urlInfo.Context}/{urlInfo.ViewId}?srch=&pageSize=10000",
+                    // fromRecord=0 is required: the API defaults to fromRecord=1, which skips the very
+                    // first record (the overall winner). pageSize=10000 ensures all participants are
+                    // fetched (some races exceed 2000 entries).
+                    $"https://results.chronorace.be/api/results/table/search/{urlInfo.Context}/{urlInfo.ViewId}?srch=&fromRecord=0&pageSize=10000",
 
                     // Fallback patterns if the primary doesn't work
-                    $"https://results.chronorace.be/api/results/table/search/{urlInfo.Context}/{urlInfo.RaceId}?srch=&pageSize=10000",
+                    $"https://results.chronorace.be/api/results/table/search/{urlInfo.Context}/{urlInfo.RaceId}?srch=&fromRecord=0&pageSize=10000",
                     $"https://results.chronorace.be/api/results/{urlInfo.Context}/{urlInfo.ViewId}",
                 };
 
@@ -282,6 +284,21 @@ namespace NameParser.Infrastructure.Repositories
                             if (firstGroup.TryGetProperty("SlaveRows", out var slaveRowsProperty))
                             {
                                 System.Diagnostics.Debug.WriteLine($"Found chronorace.be SlaveRows structure with {slaveRowsProperty.GetArrayLength()} rows");
+
+                                // Newer chronorace.be layouts expose an explicit column definition where the
+                                // athlete name is split across dedicated "#NAME" (last name) and "prenom"
+                                // (first name) columns and the time is a raw millisecond value. The
+                                // positional heuristics in ParseChronoraceResults cannot handle that layout,
+                                // so parse by column name when the definition is available.
+                                if (root.TryGetProperty("TableDefinition", out var tableDefinition)
+                                    && tableDefinition.TryGetProperty("Columns", out var columnsProperty)
+                                    && columnsProperty.ValueKind == JsonValueKind.Array
+                                    && HasNameColumn(columnsProperty))
+                                {
+                                    System.Diagnostics.Debug.WriteLine("Detected column-based chronorace.be layout, parsing by column names");
+                                    return ParseChronoraceResultsByColumns(columnsProperty, slaveRowsProperty, members);
+                                }
+
                                 return ParseChronoraceResults(slaveRowsProperty, members);
                             }
                         }
@@ -430,6 +447,317 @@ namespace NameParser.Infrastructure.Repositories
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Determines whether the table definition exposes an athlete name column (e.g. "#NAME",
+        /// "sB_#NAME"). When present, the column-based parser can reliably map cells by column name
+        /// regardless of the exact positional layout.
+        /// </summary>
+        private static bool HasNameColumn(JsonElement columnsProperty)
+        {
+            foreach (JsonElement column in columnsProperty.EnumerateArray())
+            {
+                var name = column.TryGetProperty("Name", out var nameProp) ? nameProp.GetString() ?? "" : "";
+                if (name.IndexOf("#NAME", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Determines whether the table definition uses the newer chronorace.be layout that stores
+        /// the last name and first name in separate columns ("#NAME" and "prenom").
+        /// </summary>
+        private static bool HasSeparateNameColumns(JsonElement columnsProperty)
+        {
+            bool hasName = false;
+            bool hasFirstName = false;
+
+            foreach (JsonElement column in columnsProperty.EnumerateArray())
+            {
+                var name = column.TryGetProperty("Name", out var nameProp) ? nameProp.GetString() ?? "" : "";
+                if (name.Equals("#NAME", StringComparison.OrdinalIgnoreCase))
+                    hasName = true;
+                else if (name.Equals("prenom", StringComparison.OrdinalIgnoreCase))
+                    hasFirstName = true;
+            }
+
+            return hasName && hasFirstName;
+        }
+
+        /// <summary>
+        /// Parses chronorace.be results by mapping each cell to its column definition. This handles the
+        /// newer layout where the athlete name is split into dedicated "#NAME" / "prenom" columns, the
+        /// finish time is a raw millisecond value, and the average speed lives in its own "Avg" column.
+        /// </summary>
+        private Dictionary<int, string> ParseChronoraceResultsByColumns(JsonElement columnsProperty, JsonElement slaveRowsArray, List<Member> members)
+        {
+            var results = new Dictionary<int, string>();
+            var rowId = 1;
+
+            // Add header
+            results[rowId++] = "Header;Position;Sex;Bib;Name;Country;Status;Time;Speed;Category;Category Position;";
+
+            // Build a lookup from column purpose to cell index using the column names.
+            int posIndex = -1, bibIndex = -1, lastNameIndex = -1, firstNameIndex = -1,
+                countryIndex = -1, clubIndex = -1, teamIndex = -1, timeTextIndex = -1,
+                speedIndex = -1, categoryIndex = -1, categoryPositionIndex = -1;
+
+            int columnIndex = 0;
+            foreach (JsonElement column in columnsProperty.EnumerateArray())
+            {
+                var name = column.TryGetProperty("Name", out var nameProp) ? nameProp.GetString() ?? "" : "";
+
+                if (name.StartsWith("sR_Pos", StringComparison.OrdinalIgnoreCase) && posIndex < 0)
+                    posIndex = columnIndex;
+                else if (name.IndexOf("#NR", StringComparison.OrdinalIgnoreCase) >= 0 && bibIndex < 0)
+                    bibIndex = columnIndex;
+                else if (name.Equals("prenom", StringComparison.OrdinalIgnoreCase))
+                    firstNameIndex = columnIndex;
+                else if (name.IndexOf("#NAME", StringComparison.OrdinalIgnoreCase) >= 0 && lastNameIndex < 0)
+                    lastNameIndex = columnIndex;
+                else if (name.IndexOf("#NOC", StringComparison.OrdinalIgnoreCase) >= 0 && countryIndex < 0)
+                    countryIndex = columnIndex;
+                else if (name.IndexOf("#TEAM", StringComparison.OrdinalIgnoreCase) >= 0 && teamIndex < 0)
+                    teamIndex = columnIndex;
+                else if (name.IndexOf("Club", StringComparison.OrdinalIgnoreCase) >= 0)
+                    clubIndex = columnIndex; // last Club column wins (the clean, non-weighted one)
+                else if (name.IndexOf("TKm", StringComparison.OrdinalIgnoreCase) >= 0)
+                    { /* time-per-km, ignored */ }
+                else if (name.IndexOf("Avg", StringComparison.OrdinalIgnoreCase) >= 0 && speedIndex < 0)
+                    speedIndex = columnIndex;
+                else if (name.IndexOf("Temps", StringComparison.OrdinalIgnoreCase) >= 0
+                         || name.IndexOf("#TIME", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    // Prefer the official plain-text time column ("t_sBR_Temps"). Keep the first
+                    // encountered time column as a fallback when that one is not present.
+                    if (name.StartsWith("t_", StringComparison.OrdinalIgnoreCase))
+                        timeTextIndex = columnIndex;
+                    else if (timeTextIndex < 0)
+                        timeTextIndex = columnIndex;
+                }
+                else if (name.IndexOf("gCategorie_Nom", StringComparison.OrdinalIgnoreCase) >= 0
+                         || (name.IndexOf("#Cat", StringComparison.OrdinalIgnoreCase) >= 0 && categoryIndex < 0))
+                    categoryIndex = columnIndex;
+                else if (name.IndexOf("gCateg", StringComparison.OrdinalIgnoreCase) >= 0
+                         && name.IndexOf("Rang", StringComparison.OrdinalIgnoreCase) >= 0
+                         && categoryPositionIndex < 0)
+                    categoryPositionIndex = columnIndex;
+
+                columnIndex++;
+            }
+
+            var sexPositionCounters = new Dictionary<string, int>();
+
+            foreach (JsonElement row in slaveRowsArray.EnumerateArray())
+            {
+                if (row.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                var cells = new List<string>();
+                foreach (JsonElement cell in row.EnumerateArray())
+                {
+                    if (cell.ValueKind == JsonValueKind.String)
+                        cells.Add(cell.GetString() ?? "");
+                    else if (cell.ValueKind == JsonValueKind.Null)
+                        cells.Add("");
+                    else
+                        cells.Add(cell.ToString());
+                }
+
+                try
+                {
+                    string GetCell(int idx) => idx >= 0 && idx < cells.Count ? cells[idx] : "";
+
+                    string positionStr = GetCell(posIndex).TrimEnd('.').Trim();
+                    string bib = GetCell(bibIndex);
+                    string lastName = StripHtmlTags(GetCell(lastNameIndex)).Trim();
+                    string firstName = StripHtmlTags(GetCell(firstNameIndex)).Trim();
+                    string country = GetCell(countryIndex);
+                    string team = teamIndex >= 0 && !string.IsNullOrWhiteSpace(GetCell(teamIndex))
+                        ? GetCell(teamIndex)
+                        : GetCell(clubIndex);
+                    string timeText = GetCell(timeTextIndex);
+                    string speedStr = GetCell(speedIndex);
+                    string category = GetCell(categoryIndex);
+                    string categoryPositionStr = GetCell(categoryPositionIndex);
+
+                    // Some layouts expose a single combined name column (e.g. "sB_#NAME") that holds
+                    // the last name and first name together, typically separated by line breaks
+                    // ("MHIMDAT\r\n\r\nAimad"). Split it when no dedicated first-name column exists.
+                    if (firstNameIndex < 0 && !string.IsNullOrWhiteSpace(lastName))
+                    {
+                        var (splitLast, splitFirst) = SplitCombinedChronoraceName(lastName);
+                        lastName = splitLast;
+                        firstName = splitFirst;
+                    }
+
+
+                    // The country cell can be a flag image path (e.g. "flags/bel.png"); extract the code.
+                    var flagMatch = Regex.Match(country ?? "", @"flags/([a-zA-Z]{2,3})\.png", RegexOptions.IgnoreCase);
+                    if (flagMatch.Success)
+                        country = flagMatch.Groups[1].Value.ToUpperInvariant();
+
+                    // Parse position (skip DNS/DNF/"-")
+                    int? position = null;
+                    if (!string.IsNullOrWhiteSpace(positionStr) && positionStr != "-"
+                        && int.TryParse(positionStr, out int pos))
+                    {
+                        position = pos;
+                    }
+
+                    // Category position
+                    int? categoryPosition = null;
+                    if (!string.IsNullOrWhiteSpace(categoryPositionStr) && categoryPositionStr != "-"
+                        && int.TryParse(categoryPositionStr, out int catPos))
+                    {
+                        categoryPosition = catPos;
+                    }
+
+                    // Sex is not exposed as a dedicated column in this layout; derive from category prefix
+                    // when possible (e.g. "SEH"/"VE1" -> M, "SED"/"DA1" -> F). Leave empty otherwise.
+                    string sex = DeriveSexFromCategory(category);
+
+                    int? sexPosition = null;
+                    if (position.HasValue && !string.IsNullOrWhiteSpace(sex))
+                    {
+                        if (!sexPositionCounters.ContainsKey(sex))
+                            sexPositionCounters[sex] = 0;
+                        sexPositionCounters[sex]++;
+                        sexPosition = sexPositionCounters[sex];
+                    }
+
+                    // Time: prefer the human-readable text column; skip "-"/empty.
+                    TimeSpan? raceTime = null;
+                    if (!string.IsNullOrWhiteSpace(timeText) && timeText != "-")
+                    {
+                        var timeClean = StripHtmlTags(timeText).Trim();
+
+                        // In this layout the "Temps" columns hold a raw millisecond value
+                        // (e.g. "11390290" == 3:09:50). Fall back to textual parsing otherwise.
+                        if (Regex.IsMatch(timeClean, @"^\d+$")
+                            && long.TryParse(timeClean, out long timeMs) && timeMs > 0)
+                        {
+                            raceTime = TimeSpan.FromMilliseconds(timeMs);
+                        }
+                        else
+                        {
+                            raceTime = ParseTime(timeClean);
+                        }
+                    }
+
+                    double? speed = null;
+                    if (!string.IsNullOrWhiteSpace(speedStr) && speedStr != "-")
+                    {
+                        speed = ParseSpeed(speedStr);
+                    }
+
+                    var fullName = string.Join(" ", new[] { lastName, firstName }.Where(n => !string.IsNullOrWhiteSpace(n)));
+
+                    var matchedMember = FindMatchingMember(members, fullName, firstName, lastName);
+                    bool isMember = matchedMember != null;
+                    if (matchedMember != null)
+                    {
+                        firstName = matchedMember.FirstName;
+                        lastName = matchedMember.LastName;
+                    }
+
+                    var resultBuilder = new System.Text.StringBuilder();
+                    resultBuilder.Append(isMember ? "TMEM;" : "TWINNER;");
+
+                    if (raceTime.HasValue)
+                        resultBuilder.Append($"RACETIME;{FormatTimeSpan(raceTime)};");
+                    if (position.HasValue)
+                        resultBuilder.Append($"POS;{position};");
+                    if (speed.HasValue)
+                        resultBuilder.Append($"SPEED;{FormatSpeed(speed)};");
+                    if (!string.IsNullOrWhiteSpace(sex))
+                        resultBuilder.Append($"SEX;{sex};");
+                    if (sexPosition.HasValue)
+                        resultBuilder.Append($"POSITIONSEX;{sexPosition};");
+                    if (!string.IsNullOrWhiteSpace(category))
+                        resultBuilder.Append($"CATEGORY;{category};");
+                    if (categoryPosition.HasValue)
+                        resultBuilder.Append($"POSITIONCAT;{categoryPosition};");
+
+                    var teamValue = !string.IsNullOrWhiteSpace(team) ? team : country;
+                    if (!string.IsNullOrWhiteSpace(teamValue))
+                        resultBuilder.Append($"TEAM;{teamValue};");
+
+                    resultBuilder.Append($"ISMEMBER;{(isMember ? "1" : "0")};");
+                    resultBuilder.Append($"{firstName};{lastName}");
+
+                    results[rowId++] = resultBuilder.ToString();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error parsing column-based chronorace row: {ex.Message}");
+                }
+            }
+
+            return results;
+        }
+
+        /// <summary>
+        /// Splits a combined chronorace.be name cell into (lastName, firstName). The value usually holds
+        /// the upper-case last name and the first name separated by line breaks (e.g. "MHIMDAT\r\n\r\nAimad").
+        /// Falls back to the chronorace "LASTNAME FirstName" convention (last token is the first name)
+        /// when no line break is present.
+        /// </summary>
+        private static (string lastName, string firstName) SplitCombinedChronoraceName(string combined)
+        {
+            if (string.IsNullOrWhiteSpace(combined))
+                return (string.Empty, string.Empty);
+
+            var parts = combined
+                .Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim())
+                .Where(p => p.Length > 0)
+                .ToList();
+
+            if (parts.Count >= 2)
+            {
+                var last = parts[0];
+                var first = string.Join(" ", parts.Skip(1));
+                return (last, first);
+            }
+
+            var single = parts.Count == 1 ? parts[0] : combined.Trim();
+            var lastSpaceIndex = single.LastIndexOf(' ');
+            if (lastSpaceIndex > 0)
+            {
+                return (single.Substring(0, lastSpaceIndex).Trim(),
+                        single.Substring(lastSpaceIndex + 1).Trim());
+            }
+
+            return (single, string.Empty);
+        }
+
+        /// <summary>
+        /// Derives the athlete sex from a chronorace category code when the response does not expose a
+        /// dedicated sex column. Only unambiguous codes are mapped; ambiguous mixed categories
+        /// (e.g. "SEN", "VE1") return an empty string so that no incorrect sex is emitted.
+        /// </summary>
+        private static string DeriveSexFromCategory(string category)
+        {
+            if (string.IsNullOrWhiteSpace(category))
+                return "";
+
+            var c = category.Trim().ToUpperInvariant();
+
+            // Unambiguous female markers (Dames / female espoir / explicit female suffix).
+            if (c.StartsWith("DA") || c.StartsWith("ESF") || c.StartsWith("SED")
+                || c.StartsWith("VED") || c.EndsWith("F"))
+                return "F";
+
+            // Unambiguous male markers (explicit "Hommes" suffix).
+            if (c.EndsWith("H") || c.StartsWith("SEH") || c.StartsWith("VEH"))
+                return "M";
+
+            // Ambiguous / mixed category: sex cannot be reliably determined.
+            return "";
         }
 
         private Dictionary<int, string> ParseChronoraceResults(JsonElement slaveRowsArray, List<Member> members)

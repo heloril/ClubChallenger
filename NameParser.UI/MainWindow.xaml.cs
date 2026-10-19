@@ -28,6 +28,35 @@ namespace NameParser.UI
         // No longer need TabControl_SelectionChanged since we have one unified tab
         // No longer need MoveWebViewToContainer since WebView2 stays in one place
 
+        // Prevent the TabControl from switching tabs when navigation keys
+        // (Home/End/arrows/PageUp/PageDown) are pressed while a tab header or the
+        // WYSIWYG (WebView2) editor has focus.
+        private void MainTabControl_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            var focusIsOnTabHeader = e.OriginalSource is TabItem;
+            var focusIsOnEditor = _emailEditorWebView != null &&
+                                  (e.OriginalSource == _emailEditorWebView ||
+                                   e.OriginalSource is WebView2 ||
+                                   _emailEditorWebView.IsKeyboardFocusWithin);
+
+            if (focusIsOnTabHeader || focusIsOnEditor)
+            {
+                switch (e.Key)
+                {
+                    case Key.Home:
+                    case Key.End:
+                    case Key.Left:
+                    case Key.Right:
+                    case Key.Up:
+                    case Key.Down:
+                    case Key.PageUp:
+                    case Key.PageDown:
+                        e.Handled = true;
+                        break;
+                }
+            }
+        }
+
         private T FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
         {
             for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)

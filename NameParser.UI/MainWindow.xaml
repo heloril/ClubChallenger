@@ -67,7 +67,7 @@
         </Border>
 
         <!-- Main Content -->
-        <TabControl Grid.Row="1">
+        <TabControl Grid.Row="1" PreviewKeyDown="MainTabControl_PreviewKeyDown">
 
             <!-- Upload and Process Tab -->
             <TabItem Header="{Binding Localization[TabUploadProcess]}">
