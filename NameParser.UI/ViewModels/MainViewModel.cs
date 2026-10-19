@@ -154,6 +154,7 @@ namespace NameParser.UI.ViewModels
             ChallengeCalendarViewModel = new ChallengeCalendarViewModel();
             ChallengeMailingViewModel = new ChallengeMailingViewModel();
             MemberMailingViewModel = new MemberMailingViewModel();
+            MemberManagementViewModel = new MemberManagementViewModel();
             DatabaseBackupViewModel = new DatabaseBackupViewModel();
 
             LoadRaces();
@@ -390,6 +391,7 @@ namespace NameParser.UI.ViewModels
         public ChallengeCalendarViewModel ChallengeCalendarViewModel { get; }
         public ChallengeMailingViewModel ChallengeMailingViewModel { get; }
         public MemberMailingViewModel MemberMailingViewModel { get; }
+        public MemberManagementViewModel MemberManagementViewModel { get; }
         public DatabaseBackupViewModel DatabaseBackupViewModel { get; }
 
         // Localization
