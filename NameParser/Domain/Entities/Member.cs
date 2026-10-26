@@ -9,12 +9,13 @@ namespace NameParser.Domain.Entities
         public string Email { get; set; }
         public bool IsMember { get; set; }
         public bool IsChallenger { get; set; }
+        public double? Vma { get; set; }
 
         public Member()
         {
         }
 
-        public Member(string firstName, string lastName, string email = null, bool isMember = false, bool isChallenger = false)
+        public Member(string firstName, string lastName, string email = null, bool isMember = false, bool isChallenger = false, double? vma = null)
         {
             if (string.IsNullOrWhiteSpace(lastName))
                 throw new ArgumentException("Last name cannot be empty", nameof(lastName));
@@ -24,6 +25,7 @@ namespace NameParser.Domain.Entities
             Email = email;
             IsMember = isMember;
             IsChallenger = isChallenger;
+            Vma = vma;
         }
 
         public string GetFullName()

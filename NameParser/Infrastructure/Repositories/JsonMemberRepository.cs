@@ -28,13 +28,14 @@ namespace NameParser.Infrastructure.Repositories
             var dtos = JsonConvert.DeserializeObject<List<MemberDto>>(json);
 
             return dtos?
-                .Where(dto => !string.IsNullOrWhiteSpace(dto.LastName))
+                .Where(dto =>  !string.IsNullOrWhiteSpace(dto.LastName))
                 .Select(dto => new Member(
                     FixEncoding(dto.FirstName), 
                     FixEncoding(dto.LastName), 
                     FixEncoding(dto.Email), 
                     dto.IsMember ?? true,  // Default to true if not specified
-                    dto.IsChallenger ?? false  // Default to false if not specified
+                    dto.IsChallenger ?? false,  // Default to false if not specified
+                    dto.Vma
                 )).ToList() ?? new List<Member>();
         }
 
@@ -54,7 +55,8 @@ namespace NameParser.Infrastructure.Repositories
                     FixEncoding(dto.LastName), 
                     FixEncoding(dto.Email),
                     dto.IsMember ?? true,  // Default to true if not specified
-                    dto.IsChallenger ?? false  // Default to false if not specified
+                    dto.IsChallenger ?? false,  // Default to false if not specified
+                    dto.Vma
                 ))
                 .ToList()
                 ?? new List<Member>();
@@ -120,7 +122,8 @@ namespace NameParser.Infrastructure.Repositories
                 LastName = m.LastName,
                 Email = m.Email,
                 IsMember = m.IsMember,
-                IsChallenger = m.IsChallenger
+                IsChallenger = m.IsChallenger,
+                Vma = m.Vma
             }).ToList();
 
             var json = JsonConvert.SerializeObject(dtos, Formatting.Indented);
@@ -171,6 +174,7 @@ namespace NameParser.Infrastructure.Repositories
             public string Email { get; set; }
             public bool? IsMember { get; set; }
             public bool? IsChallenger { get; set; }
+            public double? Vma { get; set; }
         }
     }
 }

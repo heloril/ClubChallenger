@@ -23,6 +23,8 @@ namespace NameParser.Infrastructure.Data
         public DbSet<ChallengeRaceEventEntity> ChallengeRaceEvents { get; set; }
         public DbSet<RaceEventDistanceEntity> RaceEventDistances { get; set; }
         public DbSet<EmailLogEntity> EmailLogs { get; set; }
+        public DbSet<MemberEntity> Members { get; set; }
+        public DbSet<MemberVmaHistoryEntity> MemberVmaHistories { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -86,6 +88,18 @@ namespace NameParser.Infrastructure.Data
                 .WithMany()
                 .HasForeignKey(r => r.RaceEventId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            // Member unique identity on normalized first/last name is enforced in code;
+            // a non-unique helper index speeds up lookups by name.
+            modelBuilder.Entity<MemberEntity>()
+                .HasIndex(m => new { m.LastName, m.FirstName });
+
+            // Member VMA history (one row per VMA change, latest wins)
+            modelBuilder.Entity<MemberVmaHistoryEntity>()
+                .HasOne(h => h.Member)
+                .WithMany(m => m.VmaHistory)
+                .HasForeignKey(h => h.MemberId)
+                .OnDelete(DeleteBehavior.Cascade);
         }
     }
 }

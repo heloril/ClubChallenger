@@ -1290,6 +1290,7 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Text="First Name:" Grid.Row="0" Grid.Column="0"/>
@@ -1305,6 +1306,9 @@
                                     <CheckBox Content="Member" IsChecked="{Binding IsMember}" Margin="10,5" VerticalAlignment="Center"/>
                                     <CheckBox Content="Challenger" IsChecked="{Binding IsChallenger}" Margin="10,5" VerticalAlignment="Center"/>
                                 </StackPanel>
+
+                                <TextBlock Text="VMA:" Grid.Row="2" Grid.Column="0"/>
+                                <TextBox Text="{Binding Vma, UpdateSourceTrigger=LostFocus}" Grid.Row="2" Grid.Column="1" ToolTip="VMA en km/h (ex: 15.5 ou 15,5)"/>
                             </Grid>
 
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="5,10,5,5">
@@ -1343,6 +1347,7 @@
                                 <DataGridTextColumn Header="Email" Binding="{Binding Email}" Width="2*"/>
                                 <DataGridCheckBoxColumn Header="Member" Binding="{Binding IsMember}" Width="70"/>
                                 <DataGridCheckBoxColumn Header="Challenger" Binding="{Binding IsChallenger}" Width="80"/>
+                                <DataGridTextColumn Header="VMA" Binding="{Binding Vma}" Width="70"/>
                             </DataGrid.Columns>
                         </DataGrid>
                     </GroupBox>

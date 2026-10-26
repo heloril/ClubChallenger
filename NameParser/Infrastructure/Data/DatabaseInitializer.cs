@@ -1,5 +1,10 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using Microsoft.EntityFrameworkCore;
+using NameParser.Infrastructure.Data.Models;
+using Newtonsoft.Json;
 
 namespace NameParser.Infrastructure.Data
 {
@@ -347,15 +352,147 @@ namespace NameParser.Infrastructure.Data
                             PRINT 'Unique index IX_Classifications_RaceId_MemberFirstName_MemberLastName_Position created';
                         END";
                     command.ExecuteNonQuery();
+
+                    // Create Members table if it doesn't exist
+                    command.CommandText = @"
+                        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[Members]') AND type in (N'U'))
+                        BEGIN
+                            CREATE TABLE [dbo].[Members] (
+                                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                [FirstName] NVARCHAR(200) NULL,
+                                [LastName] NVARCHAR(200) NOT NULL,
+                                [Email] NVARCHAR(400) NULL,
+                                [IsMember] BIT NOT NULL DEFAULT 1,
+                                [IsChallenger] BIT NOT NULL DEFAULT 0
+                            );
+                            CREATE NONCLUSTERED INDEX [IX_Members_LastName_FirstName]
+                                ON [dbo].[Members] ([LastName] ASC, [FirstName] ASC);
+                            PRINT 'Members table created';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Create MemberVmaHistories table if it doesn't exist
+                    command.CommandText = @"
+                        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[MemberVmaHistories]') AND type in (N'U'))
+                        BEGIN
+                            CREATE TABLE [dbo].[MemberVmaHistories] (
+                                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                [MemberId] INT NOT NULL,
+                                [Vma] FLOAT NOT NULL,
+                                [RecordedDate] DATETIME2(7) NOT NULL,
+                                CONSTRAINT [FK_MemberVmaHistories_Members_MemberId]
+                                    FOREIGN KEY ([MemberId]) REFERENCES [dbo].[Members] ([Id]) ON DELETE CASCADE
+                            );
+                            CREATE NONCLUSTERED INDEX [IX_MemberVmaHistories_MemberId]
+                                ON [dbo].[MemberVmaHistories] ([MemberId] ASC);
+                            PRINT 'MemberVmaHistories table created';
+                        END";
+                    command.ExecuteNonQuery();
                 }
 
                 connection.Close();
+
+                // One-time migration of member data from the legacy JSON files into the database.
+                SeedMembersFromJson(context);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Migration warning: {ex.Message}");
                 // Don't throw - allow app to continue if migration fails
             }
+        }
+
+        /// <summary>
+        /// One-time import of member/challenger data from the legacy JSON files
+        /// (Members.json, Challenge.json) into the database. Runs only while the
+        /// Members table is empty so it is safe to call on every startup.
+        /// </summary>
+        private static void SeedMembersFromJson(RaceManagementContext context)
+        {
+            try
+            {
+                if (context.Members.Any())
+                    return;
+
+                var merged = new Dictionary<string, MemberEntity>();
+
+                void Import(string fileName, bool asMember, bool asChallenger)
+                {
+                    foreach (var dto in ReadMemberDtos(fileName))
+                    {
+                        if (string.IsNullOrWhiteSpace(dto.LastName))
+                            continue;
+
+                        var key = $"{dto.FirstName?.NormalizeForComparison() ?? string.Empty}|{dto.LastName?.NormalizeForComparison() ?? string.Empty}";
+
+                        if (!merged.TryGetValue(key, out var entity))
+                        {
+                            entity = new MemberEntity
+                            {
+                                FirstName = dto.FirstName,
+                                LastName = dto.LastName,
+                                Email = dto.Email,
+                                IsMember = false,
+                                IsChallenger = false
+                            };
+                            merged[key] = entity;
+                        }
+
+                        if (string.IsNullOrWhiteSpace(entity.Email) && !string.IsNullOrWhiteSpace(dto.Email))
+                            entity.Email = dto.Email;
+
+                        if (asMember || (dto.IsMember ?? false))
+                            entity.IsMember = true;
+                        if (asChallenger || (dto.IsChallenger ?? false))
+                            entity.IsChallenger = true;
+
+                        if (dto.Vma.HasValue && !entity.VmaHistory.Any())
+                        {
+                            entity.VmaHistory.Add(new MemberVmaHistoryEntity
+                            {
+                                Vma = dto.Vma.Value,
+                                RecordedDate = DateTime.Now
+                            });
+                        }
+                    }
+                }
+
+                Import("Members.json", asMember: true, asChallenger: false);
+                Import("Challenge.json", asMember: false, asChallenger: true);
+
+                if (merged.Count == 0)
+                    return;
+
+                context.Members.AddRange(merged.Values);
+                context.SaveChanges();
+
+                System.Diagnostics.Debug.WriteLine($"Seeded {merged.Count} member(s) from JSON into the database.");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Member seeding warning: {ex.Message}");
+                // Don't throw - allow app to continue even if seeding fails
+            }
+        }
+
+        private static IEnumerable<SeedMemberDto> ReadMemberDtos(string fileName)
+        {
+            var filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fileName);
+            if (!File.Exists(filePath))
+                return Enumerable.Empty<SeedMemberDto>();
+
+            var json = File.ReadAllText(filePath);
+            return JsonConvert.DeserializeObject<List<SeedMemberDto>>(json) ?? new List<SeedMemberDto>();
+        }
+
+        private class SeedMemberDto
+        {
+            public string FirstName { get; set; }
+            public string LastName { get; set; }
+            public string Email { get; set; }
+            public bool? IsMember { get; set; }
+            public bool? IsChallenger { get; set; }
+            public double? Vma { get; set; }
         }
     }
 }

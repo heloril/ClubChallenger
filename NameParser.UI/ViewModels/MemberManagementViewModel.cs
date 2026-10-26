@@ -15,7 +15,7 @@ namespace NameParser.UI.ViewModels
 {
 	public class MemberManagementViewModel : ViewModelBase
 	{
-		private readonly JsonMemberRepository _memberRepository;
+		private readonly DatabaseMemberRepository _memberRepository;
 		private readonly List<Member> _allMembers = new List<Member>();
 
 		private Member _selectedMember;
@@ -24,6 +24,7 @@ namespace NameParser.UI.ViewModels
 		private string _email;
 		private bool _isMember = true;
 		private bool _isChallenger;
+		private string _vma;
 		private string _statusMessage;
 		private string _searchText;
 		private bool _showMembers = true;
@@ -35,7 +36,7 @@ namespace NameParser.UI.ViewModels
 
 		public MemberManagementViewModel()
 		{
-			_memberRepository = new JsonMemberRepository();
+			_memberRepository = new DatabaseMemberRepository();
 
 			ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
@@ -109,6 +110,24 @@ namespace NameParser.UI.ViewModels
 		{
 			get => _isChallenger;
 			set => SetProperty(ref _isChallenger, value);
+		}
+
+		public string Vma
+		{
+			get => _vma;
+			set => SetProperty(ref _vma, value);
+		}
+
+		private static double? ParseVma(string text)
+		{
+			if (string.IsNullOrWhiteSpace(text))
+				return null;
+
+			var normalized = text.Trim().Replace(',', '.');
+			if (double.TryParse(normalized, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var value))
+				return value;
+
+			return null;
 		}
 
 		public string StatusMessage
@@ -211,6 +230,7 @@ namespace NameParser.UI.ViewModels
 				Email = SelectedMember.Email;
 				IsMember = SelectedMember.IsMember;
 				IsChallenger = SelectedMember.IsChallenger;
+				Vma = SelectedMember.Vma?.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
 				_originalFirstName = SelectedMember.FirstName;
 				_originalLastName = SelectedMember.LastName;
@@ -225,6 +245,7 @@ namespace NameParser.UI.ViewModels
 			Email = string.Empty;
 			IsMember = true;
 			IsChallenger = false;
+			Vma = null;
 			_originalFirstName = null;
 			_originalLastName = null;
 		}
@@ -238,7 +259,7 @@ namespace NameParser.UI.ViewModels
 		{
 			try
 			{
-				var member = new Member(FirstName?.Trim(), LastName?.Trim(), Email?.Trim(), IsMember, IsChallenger);
+				var member = new Member(FirstName?.Trim(), LastName?.Trim(), Email?.Trim(), IsMember, IsChallenger, ParseVma(Vma));
 				_memberRepository.Add(member);
 
 				StatusMessage = $"Member '{member.GetFullName()}' added.";
@@ -261,7 +282,7 @@ namespace NameParser.UI.ViewModels
 		{
 			try
 			{
-				var member = new Member(FirstName?.Trim(), LastName?.Trim(), Email?.Trim(), IsMember, IsChallenger);
+				var member = new Member(FirstName?.Trim(), LastName?.Trim(), Email?.Trim(), IsMember, IsChallenger, ParseVma(Vma));
 				_memberRepository.Update(_originalFirstName, _originalLastName, member);
 
 				StatusMessage = $"Member '{member.GetFullName()}' updated.";
@@ -348,8 +369,9 @@ namespace NameParser.UI.ViewModels
 					worksheet.Cells[1, 3].Value = "Email";
 					worksheet.Cells[1, 4].Value = "Member";
 					worksheet.Cells[1, 5].Value = "Challenger";
+					worksheet.Cells[1, 6].Value = "VMA";
 
-					using (var header = worksheet.Cells[1, 1, 1, 5])
+					using (var header = worksheet.Cells[1, 1, 1, 6])
 					{
 						header.Style.Font.Bold = true;
 						header.Style.Fill.PatternType = ExcelFillStyle.Solid;
@@ -364,6 +386,7 @@ namespace NameParser.UI.ViewModels
 						worksheet.Cells[row, 3].Value = member.Email;
 						worksheet.Cells[row, 4].Value = member.IsMember ? "Yes" : "No";
 						worksheet.Cells[row, 5].Value = member.IsChallenger ? "Yes" : "No";
+						worksheet.Cells[row, 6].Value = member.Vma;
 						row++;
 					}
 
