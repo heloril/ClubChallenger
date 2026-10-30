@@ -3,11 +3,15 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using Microsoft.Win32;
 using NameParser.Domain.Entities;
+using NameParser.Infrastructure.Data;
+using NameParser.Infrastructure.Data.Models;
 using NameParser.Infrastructure.Repositories;
+using NameParser.Application.Services;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
 
@@ -16,7 +20,10 @@ namespace NameParser.UI.ViewModels
 	public class MemberManagementViewModel : ViewModelBase
 	{
 		private readonly DatabaseMemberRepository _memberRepository;
+		private readonly VmaExtrapolationService _vmaExtrapolationService;
+		private readonly VmaExtrapolationLogRepository _extrapolationLogRepository = new VmaExtrapolationLogRepository();
 		private readonly List<Member> _allMembers = new List<Member>();
+		private bool _isExtrapolating;
 
 		private Member _selectedMember;
 		private string _firstName;
@@ -37,10 +44,12 @@ namespace NameParser.UI.ViewModels
 		public MemberManagementViewModel()
 		{
 			_memberRepository = new DatabaseMemberRepository();
+			_vmaExtrapolationService = new VmaExtrapolationService(_memberRepository);
 
 			ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
 			Members = new ObservableCollection<Member>();
+			VmaTimeline = new ObservableCollection<VmaTimelineItem>();
 
 			AddMemberCommand = new RelayCommand(ExecuteAddMember, CanExecuteAddMember);
 			UpdateMemberCommand = new RelayCommand(ExecuteUpdateMember, CanExecuteUpdateMember);
@@ -49,11 +58,16 @@ namespace NameParser.UI.ViewModels
 			RefreshCommand = new RelayCommand(_ => LoadMembers());
 			ExportMembersCommand = new RelayCommand(_ => ExportToExcel(onlyMembers: true, onlyChallengers: false, "Members"));
 			ExportChallengersCommand = new RelayCommand(_ => ExportToExcel(onlyMembers: false, onlyChallengers: true, "Challengers"));
+			ExtrapolateVmaCommand = new RelayCommand(ExecuteExtrapolateVma, CanExecuteExtrapolateVma);
+			ExtrapolateAllVmaCommand = new RelayCommand(ExecuteExtrapolateAllVma, _ => !_isExtrapolating);
+			DeleteVmaRecordCommand = new RelayCommand(ExecuteDeleteVmaRecord, p => p is VmaTimelineItem item && item.RecordId.HasValue);
 
 			LoadMembers();
 		}
 
 		public ObservableCollection<Member> Members { get; }
+
+		public ObservableCollection<VmaTimelineItem> VmaTimeline { get; }
 
 		public ICommand AddMemberCommand { get; }
 		public ICommand UpdateMemberCommand { get; }
@@ -62,6 +76,9 @@ namespace NameParser.UI.ViewModels
 		public ICommand RefreshCommand { get; }
 		public ICommand ExportMembersCommand { get; }
 		public ICommand ExportChallengersCommand { get; }
+		public ICommand ExtrapolateVmaCommand { get; }
+		public ICommand ExtrapolateAllVmaCommand { get; }
+		public ICommand DeleteVmaRecordCommand { get; }
 
 		public Member SelectedMember
 		{
@@ -71,8 +88,10 @@ namespace NameParser.UI.ViewModels
 				if (SetProperty(ref _selectedMember, value))
 				{
 					LoadMemberDetails();
+					LoadVmaTimeline();
 					(UpdateMemberCommand as RelayCommand)?.RaiseCanExecuteChanged();
 					(DeleteMemberCommand as RelayCommand)?.RaiseCanExecuteChanged();
+					(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
 				}
 			}
 		}
@@ -248,6 +267,213 @@ namespace NameParser.UI.ViewModels
 			Vma = null;
 			_originalFirstName = null;
 			_originalLastName = null;
+			VmaTimeline.Clear();
+		}
+
+		private void LoadVmaTimeline()
+		{
+			VmaTimeline.Clear();
+
+			if (SelectedMember == null)
+				return;
+
+			try
+			{
+				var items = new List<VmaTimelineItem>();
+
+				var history = _memberRepository.GetVmaHistory(SelectedMember.FirstName, SelectedMember.LastName);
+				foreach (var record in history)
+				{
+					items.Add(new VmaTimelineItem
+					{
+						Date = record.RecordedDate,
+						Vma = record.Vma,
+						Type = record.IsExtrapolated ? "VMA extrapolée" : "VMA testée",
+						Details = string.Empty,
+						RecordId = record.Id
+					});
+				}
+
+				var logs = _extrapolationLogRepository.GetLogsForMember(SelectedMember.FirstName, SelectedMember.LastName);
+				foreach (var log in logs)
+				{
+					items.Add(new VmaTimelineItem
+					{
+						Date = log.CreatedDate,
+						Vma = log.PredictedVma,
+						Type = log.IsSuccess ? $"Extrapolation ({log.Method})" : "Extrapolation (échec)",
+						Details = log.Details,
+						RecordId = null
+					});
+				}
+
+				foreach (var item in items.OrderByDescending(i => i.Date))
+				{
+					VmaTimeline.Add(item);
+				}
+			}
+			catch (Exception ex)
+			{
+				StatusMessage = $"Error loading VMA timeline: {ex.Message}";
+			}
+		}
+
+		private bool CanExecuteExtrapolateVma(object parameter)
+		{
+			return SelectedMember != null && !_isExtrapolating;
+		}
+
+		private async void ExecuteExtrapolateVma(object parameter)
+		{
+			if (SelectedMember == null || _isExtrapolating)
+				return;
+
+			_isExtrapolating = true;
+			(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+
+			try
+			{
+				var firstName = SelectedMember.FirstName;
+				var lastName = SelectedMember.LastName;
+
+				// Run the DB-bound extrapolation and persistence off the UI thread so the
+				// window stays responsive while the calibration data is queried.
+				var predicted = await Task.Run(() =>
+				{
+					var value = _vmaExtrapolationService.ExtrapolateVma(firstName, lastName);
+					if (value.HasValue)
+						_memberRepository.AddVmaRecord(firstName, lastName, value.Value, isExtrapolated: true);
+					return value;
+				});
+
+				if (!predicted.HasValue)
+				{
+					LoadVmaTimeline();
+					StatusMessage = $"Impossible d'extrapoler la VMA de '{SelectedMember.GetFullName()}' (données de course ou de calibration insuffisantes).";
+					MessageBox.Show(StatusMessage, "Extrapolation VMA", MessageBoxButton.OK, MessageBoxImage.Information);
+					return;
+				}
+
+				StatusMessage = $"VMA extrapolée pour '{SelectedMember.GetFullName()}' : {predicted.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)} km/h.";
+
+				LoadMembers();
+				var refreshed = _allMembers.FirstOrDefault(m =>
+					string.Equals(m.FirstName ?? string.Empty, firstName ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+					&& string.Equals(m.LastName ?? string.Empty, lastName ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+				if (refreshed != null)
+				{
+					SelectedMember = refreshed;
+				}
+				else
+				{
+					LoadVmaTimeline();
+				}
+			}
+			catch (Exception ex)
+			{
+				StatusMessage = $"Error extrapolating VMA: {ex.Message}";
+				MessageBox.Show(StatusMessage, "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+			}
+			finally
+			{
+				_isExtrapolating = false;
+				(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+			}
+		}
+
+		private async void ExecuteExtrapolateAllVma(object parameter)
+		{
+			if (_isExtrapolating)
+				return;
+
+			var confirm = MessageBox.Show(
+				"Extrapoler automatiquement la VMA de tous les membres ayant plus d'une course ?\n" +
+				"Les VMA testées restent toujours les données de référence, et seules les meilleures courses (50 %) de chaque membre sont utilisées.",
+				"Extrapolation VMA globale",
+				MessageBoxButton.YesNo,
+				MessageBoxImage.Question);
+
+			if (confirm != MessageBoxResult.Yes)
+				return;
+
+			_isExtrapolating = true;
+			(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+			(ExtrapolateAllVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+
+			try
+			{
+				var firstName = SelectedMember?.FirstName;
+				var lastName = SelectedMember?.LastName;
+
+				var count = await Task.Run(() => _vmaExtrapolationService.ExtrapolateAllVma(minRaces: 2));
+
+				StatusMessage = $"Extrapolation VMA globale terminée : {count} membre(s) extrapolé(s).";
+				MessageBox.Show(StatusMessage, "Extrapolation VMA globale", MessageBoxButton.OK, MessageBoxImage.Information);
+
+				LoadMembers();
+				if (firstName != null || lastName != null)
+				{
+					var refreshed = _allMembers.FirstOrDefault(m =>
+						string.Equals(m.FirstName ?? string.Empty, firstName ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+						&& string.Equals(m.LastName ?? string.Empty, lastName ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+					if (refreshed != null)
+					{
+						SelectedMember = refreshed;
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				StatusMessage = $"Error extrapolating all VMAs: {ex.Message}";
+				MessageBox.Show(StatusMessage, "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+			}
+			finally
+			{
+				_isExtrapolating = false;
+				(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+				(ExtrapolateAllVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+			}
+		}
+
+		private void ExecuteDeleteVmaRecord(object parameter)
+		{
+			if (!(parameter is VmaTimelineItem item) || !item.RecordId.HasValue)
+				return;
+
+			var result = MessageBox.Show(
+				$"Supprimer cette entrée VMA ({item.VmaDisplay} km/h du {item.Date:dd/MM/yyyy}) ?",
+				"Confirmer la suppression",
+				MessageBoxButton.YesNo,
+				MessageBoxImage.Question);
+
+			if (result != MessageBoxResult.Yes)
+				return;
+
+			try
+			{
+				_memberRepository.DeleteVmaRecord(item.RecordId.Value);
+				StatusMessage = "Entrée VMA supprimée.";
+
+				var firstName = SelectedMember?.FirstName;
+				var lastName = SelectedMember?.LastName;
+
+				LoadMembers();
+				if (firstName != null || lastName != null)
+				{
+					var refreshed = _allMembers.FirstOrDefault(m =>
+						string.Equals(m.FirstName ?? string.Empty, firstName ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+						&& string.Equals(m.LastName ?? string.Empty, lastName ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+					if (refreshed != null)
+					{
+						SelectedMember = refreshed;
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				StatusMessage = $"Error deleting VMA record: {ex.Message}";
+				MessageBox.Show(StatusMessage, "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+			}
 		}
 
 		private bool CanExecuteAddMember(object parameter)

@@ -207,6 +207,120 @@ namespace NameParser.Infrastructure.Repositories
 			context.SaveChanges();
 		}
 
+		/// <summary>
+		/// Returns the full VMA history (most recent first) for the member identified
+		/// by first/last name.
+		/// </summary>
+		public List<MemberVmaRecord> GetVmaHistory(string firstName, string lastName)
+		{
+			using var context = new RaceManagementContext();
+
+			var entity = context.Members
+				.Include(m => m.VmaHistory)
+				.AsNoTracking()
+				.AsEnumerable()
+				.FirstOrDefault(m => SameName(m, firstName, lastName));
+
+			if (entity == null)
+				return new List<MemberVmaRecord>();
+
+			return entity.VmaHistory
+				.OrderByDescending(h => h.RecordedDate)
+				.ThenByDescending(h => h.Id)
+				.Select(h => new MemberVmaRecord
+				{
+					Id = h.Id,
+					Vma = h.Vma,
+					RecordedDate = h.RecordedDate,
+					IsExtrapolated = h.IsExtrapolated
+				})
+				.ToList();
+		}
+
+		/// <summary>
+		/// Adds a new VMA history entry for the member identified by first/last name.
+		/// </summary>
+		public void AddVmaRecord(string firstName, string lastName, double vma, bool isExtrapolated)
+		{
+			using var context = new RaceManagementContext();
+
+			var entity = context.Members
+				.Include(m => m.VmaHistory)
+				.AsEnumerable()
+				.FirstOrDefault(m => SameName(m, firstName, lastName));
+
+			if (entity == null)
+				throw new InvalidOperationException($"Member '{firstName} {lastName}' was not found.");
+
+			entity.VmaHistory.Add(new MemberVmaHistoryEntity
+			{
+				Vma = vma,
+				RecordedDate = DateTime.Now,
+				IsExtrapolated = isExtrapolated
+			});
+
+			context.SaveChanges();
+		}
+
+		/// <summary>
+		/// Deletes a single VMA history entry by its identifier.
+		/// </summary>
+		public void DeleteVmaRecord(int recordId)
+		{
+			using var context = new RaceManagementContext();
+
+			var record = context.MemberVmaHistories.Find(recordId);
+			if (record == null)
+				return;
+
+			context.MemberVmaHistories.Remove(record);
+			context.SaveChanges();
+		}
+
+		/// <summary>
+		/// Returns, for every member, the latest measured (non-extrapolated) VMA
+		/// keyed by normalized full name. Used as calibration data for extrapolation.
+		/// </summary>
+		public Dictionary<string, double> GetLatestMeasuredVmas()
+		{
+			using var context = new RaceManagementContext();
+
+			// Select the latest measured (non-extrapolated) VMA per member directly in
+			// SQL via a correlated subquery, instead of loading every member with their
+			// full VMA history and sorting client-side.
+			var rows = context.Members
+				.AsNoTracking()
+				.Select(m => new
+				{
+					m.FirstName,
+					m.LastName,
+					Vma = m.VmaHistory
+						.Where(h => !h.IsExtrapolated)
+						.OrderByDescending(h => h.RecordedDate)
+						.ThenByDescending(h => h.Id)
+						.Select(h => (double?)h.Vma)
+						.FirstOrDefault()
+				})
+				.ToList();
+
+			var result = new Dictionary<string, double>(rows.Count);
+			foreach (var row in rows)
+			{
+				if (!row.Vma.HasValue)
+					continue;
+
+				var key = NormalizeName(row.FirstName, row.LastName);
+				result[key] = row.Vma.Value;
+			}
+
+			return result;
+		}
+
+		public static string NormalizeName(string firstName, string lastName)
+		{
+			return $"{(firstName ?? string.Empty).NormalizeForComparison()}|{(lastName ?? string.Empty).NormalizeForComparison()}";
+		}
+
 		private static Member ToDomain(MemberEntity entity)
 		{
 			var latestVma = entity.VmaHistory?

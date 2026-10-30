@@ -25,6 +25,7 @@ namespace NameParser.Infrastructure.Data
         public DbSet<EmailLogEntity> EmailLogs { get; set; }
         public DbSet<MemberEntity> Members { get; set; }
         public DbSet<MemberVmaHistoryEntity> MemberVmaHistories { get; set; }
+        public DbSet<VmaExtrapolationLogEntity> VmaExtrapolationLogs { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {

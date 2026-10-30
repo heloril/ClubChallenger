@@ -14,6 +14,8 @@
 
     <Window.Resources>
         <converters:StringToBoolConverter x:Key="StringToBoolConverter"/>
+        <converters:ZeroToVisibilityConverter x:Key="ZeroToVisibilityConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
 
         <Style TargetType="TextBlock">
             <Setter Property="Margin" Value="5"/>
@@ -1309,9 +1311,51 @@
 
                                 <TextBlock Text="VMA:" Grid.Row="2" Grid.Column="0"/>
                                 <TextBox Text="{Binding Vma, UpdateSourceTrigger=LostFocus}" Grid.Row="2" Grid.Column="1" ToolTip="VMA en km/h (ex: 15.5 ou 15,5)"/>
+
+                                <Button Content="📈 Extrapoler VMA" Command="{Binding ExtrapolateVmaCommand}" Grid.Row="2" Grid.Column="2" Grid.ColumnSpan="2"
+                                        HorizontalAlignment="Left" Margin="10,2,0,2" Padding="8,2"
+                                        ToolTip="Extrapoler la VMA à partir des temps en course (calibrée sur les VMA testées)"/>
                             </Grid>
 
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="5,10,5,5">
+                            <Button Content="📊 Extrapoler toutes les VMA" Command="{Binding ExtrapolateAllVmaCommand}"
+                                    HorizontalAlignment="Left" Margin="5,8,5,0" Padding="8,3"
+                                    ToolTip="Extrapoler automatiquement la VMA de tous les membres ayant plus d'une course (VMA testées comme références, meilleures 50 % des courses retenues)"/>
+
+                            <!-- VMA History & extrapolation journal (merged) -->
+                            <GroupBox Header="Historique &amp; extrapolation VMA" Margin="0,8,0,0"
+                                      Visibility="{Binding SelectedMember, Converter={StaticResource NullToVisibilityConverter}}">
+                                <DataGrid ItemsSource="{Binding VmaTimeline}"
+                                          AutoGenerateColumns="False" IsReadOnly="True"
+                                          HeadersVisibility="Column" CanUserAddRows="False"
+                                          MaxHeight="220">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=dd/MM/yyyy HH:mm}" Width="Auto"/>
+                                        <DataGridTextColumn Header="VMA" Binding="{Binding VmaDisplay}" Width="Auto"/>
+                                        <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="Auto"/>
+                                        <DataGridTextColumn Header="Détail" Binding="{Binding Details}" Width="*">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="TextWrapping" Value="Wrap"/>
+                                                    <Setter Property="ToolTip" Value="{Binding Details}"/>
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
+                                        <DataGridTemplateColumn Header="" Width="90">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="🗑 Suppr."
+                                                            Visibility="{Binding CanDelete, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                            Command="{Binding DataContext.DeleteVmaRecordCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                            CommandParameter="{Binding}"
+                                                            Padding="4,1" Margin="2"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </GroupBox>
+
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="5,10,5,5">
                                 <Button Content="Add" Command="{Binding AddMemberCommand}" Width="80"/>
                                 <Button Content="Update" Command="{Binding UpdateMemberCommand}" Width="80"/>
                                 <Button Content="Delete" Command="{Binding DeleteMemberCommand}" Width="80" Background="#F44336" Foreground="White"/>

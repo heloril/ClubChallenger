@@ -380,12 +380,52 @@ namespace NameParser.Infrastructure.Data
                                 [MemberId] INT NOT NULL,
                                 [Vma] FLOAT NOT NULL,
                                 [RecordedDate] DATETIME2(7) NOT NULL,
+                                [IsExtrapolated] BIT NOT NULL DEFAULT 0,
                                 CONSTRAINT [FK_MemberVmaHistories_Members_MemberId]
                                     FOREIGN KEY ([MemberId]) REFERENCES [dbo].[Members] ([Id]) ON DELETE CASCADE
                             );
                             CREATE NONCLUSTERED INDEX [IX_MemberVmaHistories_MemberId]
                                 ON [dbo].[MemberVmaHistories] ([MemberId] ASC);
                             PRINT 'MemberVmaHistories table created';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Check for IsExtrapolated column on MemberVmaHistories (added later)
+                    command.CommandText = @"
+                        IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[MemberVmaHistories]') AND type in (N'U'))
+                        AND NOT EXISTS (
+                            SELECT * FROM sys.columns
+                            WHERE object_id = OBJECT_ID(N'[dbo].[MemberVmaHistories]')
+                            AND name = 'IsExtrapolated'
+                        )
+                        BEGIN
+                            ALTER TABLE [dbo].[MemberVmaHistories] ADD [IsExtrapolated] BIT NOT NULL DEFAULT 0;
+                            PRINT 'IsExtrapolated column added';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Create VmaExtrapolationLogs table if it doesn't exist
+                    command.CommandText = @"
+                        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[VmaExtrapolationLogs]') AND type in (N'U'))
+                        BEGIN
+                            CREATE TABLE [dbo].[VmaExtrapolationLogs] (
+                                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                [MemberFirstName] NVARCHAR(100) NOT NULL,
+                                [MemberLastName] NVARCHAR(100) NOT NULL,
+                                [CreatedDate] DATETIME2(7) NOT NULL,
+                                [Method] NVARCHAR(50) NULL,
+                                [CalibrationPointCount] INT NOT NULL DEFAULT 0,
+                                [TargetSpeed] FLOAT NULL,
+                                [Slope] FLOAT NULL,
+                                [Intercept] FLOAT NULL,
+                                [PredictedVma] FLOAT NULL,
+                                [IsSuccess] BIT NOT NULL DEFAULT 0,
+                                [Details] NVARCHAR(1000) NULL,
+                                [CreatedBy] NVARCHAR(200) NULL
+                            );
+                            CREATE NONCLUSTERED INDEX [IX_VmaExtrapolationLogs_Member]
+                                ON [dbo].[VmaExtrapolationLogs] ([MemberLastName] ASC, [MemberFirstName] ASC);
+                            PRINT 'VmaExtrapolationLogs table created';
                         END";
                     command.ExecuteNonQuery();
                 }

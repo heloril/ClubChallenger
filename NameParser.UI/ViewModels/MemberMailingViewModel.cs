@@ -23,6 +23,7 @@ namespace NameParser.UI.ViewModels
         private readonly RaceRepository _raceRepository;
         private readonly ClassificationRepository _classificationRepository;
         private readonly JsonMemberRepository _memberRepository;
+        private readonly DatabaseMemberRepository _databaseMemberRepository;
         private readonly IConfiguration _configuration;
         private readonly LocalizationService _localization;
 
@@ -45,6 +46,7 @@ namespace NameParser.UI.ViewModels
             _raceRepository = new RaceRepository();
             _classificationRepository = new ClassificationRepository();
             _memberRepository = new JsonMemberRepository();
+            _databaseMemberRepository = new DatabaseMemberRepository();
             _localization = LocalizationService.Instance;
 
             // Load configuration from appsettings.json
@@ -456,7 +458,13 @@ namespace NameParser.UI.ViewModels
                 IsSending = true;
                 StatusMessage = "Sending test email...";
 
-                await SendEmailAsync(TestEmailAddress, EmailSubject, EmailBody);
+                var testVma = GetMemberVmaByEmail(TestEmailAddress);
+                if (testVma == null || testVma.Vma <= 0)
+                {
+                    StatusMessage = $"Warning: no VMA found for {TestEmailAddress} in the database; the recap will not be resolved.";
+                }
+
+                await SendEmailAsync(TestEmailAddress, EmailSubject, BuildBodyForRecipient(testVma));
 
                 StatusMessage = $"Test email sent successfully to {TestEmailAddress}!";
                 MessageBox.Show($"Test email sent successfully to {TestEmailAddress}!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -509,7 +517,8 @@ namespace NameParser.UI.ViewModels
                     .Select(m => new
                     {
                         Email = CleanEmailAddress(m.Email),
-                        IsChallenger = m.IsChallenger ?? false
+                        IsChallenger = m.IsChallenger ?? false,
+                        Vma = m.Vma
                     })
                     .Where(m => !string.IsNullOrWhiteSpace(m.Email)) // Filter out invalid emails after cleaning
                     .GroupBy(m => m.Email, StringComparer.OrdinalIgnoreCase) // Group by email to remove duplicates
@@ -534,6 +543,18 @@ namespace NameParser.UI.ViewModels
                 if (result != MessageBoxResult.Yes) return;
 
                 IsSending = true;
+
+                // VMA is stored in the database (VmaHistory), not in Members.json.
+                // Build an email -> selected VMA lookup (tested first, then extrapolated,
+                // most recent of each) so each recipient's recap is resolved.
+                var vmaByEmail = new Dictionary<string, VmaSelection>(StringComparer.OrdinalIgnoreCase);
+                foreach (var dbMember in _databaseMemberRepository.GetAll())
+                {
+                    var dbEmail = CleanEmailAddress(dbMember.Email);
+                    if (!string.IsNullOrWhiteSpace(dbEmail) && !vmaByEmail.ContainsKey(dbEmail))
+                        vmaByEmail[dbEmail] = SelectVma(dbMember.FirstName, dbMember.LastName);
+                }
+
                 int successCount = 0;
                 int failCount = 0;
                 var errors = new List<string>();
@@ -543,7 +564,8 @@ namespace NameParser.UI.ViewModels
                     try
                     {
                         StatusMessage = $"Sending to {emailInfo.Email}... ({successCount + failCount + 1}/{memberEmails.Count})";
-                        await SendEmailAsync(emailInfo.Email, EmailSubject, EmailBody, emailInfo.IsChallenger);
+                        var recipientVma = vmaByEmail.TryGetValue(emailInfo.Email, out var dbVma) ? dbVma : null;
+                        await SendEmailAsync(emailInfo.Email, EmailSubject, BuildBodyForRecipient(recipientVma), emailInfo.IsChallenger);
                         successCount++;
 
                         // Delay to avoid rate limiting
@@ -611,6 +633,90 @@ namespace NameParser.UI.ViewModels
             public string Email { get; set; }
             public bool? IsMember { get; set; }
             public bool? IsChallenger { get; set; }
+            public double? Vma { get; set; }
+        }
+
+        /// <summary>
+        /// Resolves every "X% VMA"/"X-Y% VMA" segment in the email body into a
+        /// recap block (reference VMA + paces) computed for the recipient's VMA.
+        /// When the recipient has no VMA, the body is returned unchanged.
+        /// </summary>
+        private string BuildBodyForRecipient(VmaSelection vma)
+        {
+            var body = EmailBody ?? string.Empty;
+            return NameParser.Application.Services.TrainingPaceCalculator.Resolve(
+                body,
+                vma?.Vma,
+                isHtml: true,
+                vmaDate: vma?.RecordedDate,
+                isExtrapolated: vma?.IsExtrapolated ?? false);
+        }
+
+        /// <summary>
+        /// Represents the VMA selected for a recipient: the most recent tested VMA when
+        /// available, otherwise the most recent extrapolated VMA, together with its date.
+        /// </summary>
+        private sealed class VmaSelection
+        {
+            public double Vma { get; set; }
+            public DateTime RecordedDate { get; set; }
+            public bool IsExtrapolated { get; set; }
+        }
+
+        /// <summary>
+        /// Picks the VMA to use: the most recent tested value first, then the most recent
+        /// extrapolated value. Returns null when the member has no VMA history.
+        /// </summary>
+        private VmaSelection SelectVma(string firstName, string lastName)
+        {
+            var history = _databaseMemberRepository.GetVmaHistory(firstName, lastName);
+            if (history == null || history.Count == 0)
+                return null;
+
+            var tested = history
+                .Where(h => !h.IsExtrapolated)
+                .OrderByDescending(h => h.RecordedDate)
+                .ThenByDescending(h => h.Id)
+                .FirstOrDefault();
+
+            var chosen = tested ?? history
+                .Where(h => h.IsExtrapolated)
+                .OrderByDescending(h => h.RecordedDate)
+                .ThenByDescending(h => h.Id)
+                .FirstOrDefault();
+
+            if (chosen == null || chosen.Vma <= 0)
+                return null;
+
+            return new VmaSelection
+            {
+                Vma = chosen.Vma,
+                RecordedDate = chosen.RecordedDate,
+                IsExtrapolated = chosen.IsExtrapolated
+            };
+        }
+
+        /// <summary>
+        /// Looks up a member's VMA by email address (from the database), so the test email
+        /// is resolved against the real member whose address is used for the test.
+        /// </summary>
+        private VmaSelection GetMemberVmaByEmail(string email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                return null;
+
+            var cleaned = CleanEmailAddress(email);
+            if (string.IsNullOrWhiteSpace(cleaned))
+                return null;
+
+            var member = _databaseMemberRepository.GetAll()
+                .FirstOrDefault(m => !string.IsNullOrWhiteSpace(m.Email) &&
+                                     string.Equals(CleanEmailAddress(m.Email), cleaned, StringComparison.OrdinalIgnoreCase));
+
+            if (member == null)
+                return null;
+
+            return SelectVma(member.FirstName, member.LastName);
         }
 
         private async System.Threading.Tasks.Task SendEmailAsync(string toEmail, string subject, string body, bool isChallenger = false)
