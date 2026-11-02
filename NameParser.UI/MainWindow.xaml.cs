@@ -17,12 +17,70 @@ namespace NameParser.UI
         private WebView2 _emailEditorWebView;
         private bool _isEditorReady = false;
 
+        private WebView2 _previewWebView;
+        private bool _isPreviewReady = false;
+        private MemberMailingViewModel _previewMailingViewModel;
+
         public MainWindow()
         {
             InitializeComponent();
 
             // Initialize WebView2 for WYSIWYG editor
             InitializeEmailEditor();
+
+            // Initialize WebView2 for the send/preview (mail-merge) screen
+            InitializePreviewWebView();
+        }
+
+        /// <summary>
+        /// Creates the preview WebView2 used by the "Envoi (aperçu)" tab and wires it to
+        /// <see cref="MemberMailingViewModel.PreviewHtml"/> so it re-renders whenever the
+        /// selected recipient (or the resolved body) changes.
+        /// </summary>
+        private async void InitializePreviewWebView()
+        {
+            try
+            {
+                _previewWebView = new WebView2
+                {
+                    MinHeight = 300,
+                    MinWidth = 400
+                };
+                PreviewWebViewContainer.Children.Add(_previewWebView);
+
+                await _previewWebView.EnsureCoreWebView2Async(null);
+                _isPreviewReady = true;
+
+                if (DataContext is MainViewModel mainViewModel)
+                {
+                    _previewMailingViewModel = mainViewModel.MemberMailingViewModel;
+                    if (_previewMailingViewModel != null)
+                    {
+                        _previewMailingViewModel.PropertyChanged += (s, e) =>
+                        {
+                            if (e.PropertyName == nameof(MemberMailingViewModel.PreviewHtml))
+                                RenderPreviewHtml();
+                        };
+                        RenderPreviewHtml();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur à l'initialisation de l'aperçu : {ex.Message}\n\nInstallez le runtime Microsoft Edge WebView2.",
+                    "Erreur aperçu", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void RenderPreviewHtml()
+        {
+            if (!_isPreviewReady || _previewWebView?.CoreWebView2 == null || _previewMailingViewModel == null)
+                return;
+
+            var html = _previewMailingViewModel.PreviewHtml;
+            _previewWebView.NavigateToString(string.IsNullOrWhiteSpace(html)
+                ? "<html><body style='font-family:Arial;color:#888;padding:20px;'>Cliquez sur « Charger les destinataires » pour prévisualiser.</body></html>"
+                : html);
         }
 
         // No longer need TabControl_SelectionChanged since we have one unified tab

@@ -24,6 +24,8 @@ namespace NameParser.UI.ViewModels
         private readonly ClassificationRepository _classificationRepository;
         private readonly JsonMemberRepository _memberRepository;
         private readonly DatabaseMemberRepository _databaseMemberRepository;
+        private readonly RecentRaceVmaRepository _recentRaceVmaRepository;
+        private readonly EmailTemplateRepository _emailTemplateRepository;
         private readonly IConfiguration _configuration;
         private readonly LocalizationService _localization;
 
@@ -33,6 +35,14 @@ namespace NameParser.UI.ViewModels
         private string _testEmailAddress;
         private string _statusMessage;
         private bool _isSending;
+
+        // Templates
+        private string _templateName;
+        private EmailTemplateItem _selectedTemplate;
+
+        // Preview / mail-merge
+        private int _previewIndex;
+        private string _previewHtml;
 
         // Gmail Configuration
         private string _gmailAddress;
@@ -47,6 +57,8 @@ namespace NameParser.UI.ViewModels
             _classificationRepository = new ClassificationRepository();
             _memberRepository = new JsonMemberRepository();
             _databaseMemberRepository = new DatabaseMemberRepository();
+            _recentRaceVmaRepository = new RecentRaceVmaRepository();
+            _emailTemplateRepository = new EmailTemplateRepository();
             _localization = LocalizationService.Instance;
 
             // Load configuration from appsettings.json
@@ -60,9 +72,20 @@ namespace NameParser.UI.ViewModels
             SendTestEmailCommand = new RelayCommand(ExecuteSendTestEmail, CanExecuteSendTestEmail);
             SendToAllMembersCommand = new RelayCommand(ExecuteSendToAllMembers, CanExecuteSendToAllMembers);
 
+            SaveTemplateCommand = new RelayCommand(ExecuteSaveTemplate, _ => !string.IsNullOrWhiteSpace(TemplateName));
+            LoadTemplateCommand = new RelayCommand(ExecuteLoadTemplate, _ => SelectedTemplate != null);
+            DeleteTemplateCommand = new RelayCommand(ExecuteDeleteTemplate, _ => SelectedTemplate != null);
+            RefreshTemplatesCommand = new RelayCommand(_ => LoadTemplates());
+
+            RefreshPreviewCommand = new RelayCommand(_ => LoadPreviewRecipients());
+            PreviousPreviewCommand = new RelayCommand(_ => MovePreview(-1), _ => PreviewRecipients.Count > 0 && PreviewIndex > 0);
+            NextPreviewCommand = new RelayCommand(_ => MovePreview(1), _ => PreviewRecipients.Count > 0 && PreviewIndex < PreviewRecipients.Count - 1);
+            SendCurrentPreviewCommand = new RelayCommand(ExecuteSendCurrentPreview, _ => CanSendCurrentPreview());
+
             MailingDate = DateTime.Today;
 
             LoadGmailSettings();
+            LoadTemplates();
         }
 
         public DateTime MailingDate
@@ -137,9 +160,98 @@ namespace NameParser.UI.ViewModels
             set => SetProperty(ref _smtpPort, value);
         }
 
+        // ----- Templates -----
+
+        /// <summary>
+        /// Saved email templates available for loading.
+        /// </summary>
+        public ObservableCollection<EmailTemplateItem> SavedTemplates { get; } = new ObservableCollection<EmailTemplateItem>();
+
+        public string TemplateName
+        {
+            get => _templateName;
+            set
+            {
+                if (SetProperty(ref _templateName, value))
+                    ((RelayCommand)SaveTemplateCommand).RaiseCanExecuteChanged();
+            }
+        }
+
+        public EmailTemplateItem SelectedTemplate
+        {
+            get => _selectedTemplate;
+            set
+            {
+                if (SetProperty(ref _selectedTemplate, value))
+                {
+                    if (value != null)
+                        TemplateName = value.Name;
+                    ((RelayCommand)LoadTemplateCommand).RaiseCanExecuteChanged();
+                    ((RelayCommand)DeleteTemplateCommand).RaiseCanExecuteChanged();
+                }
+            }
+        }
+
+        // ----- Preview / mail-merge -----
+
+        /// <summary>
+        /// Recipients shown in the preview screen. The first item is the raw template
+        /// (no member resolution); the others are the members with an email address.
+        /// </summary>
+        public ObservableCollection<PreviewRecipient> PreviewRecipients { get; } = new ObservableCollection<PreviewRecipient>();
+
+        public int PreviewIndex
+        {
+            get => _previewIndex;
+            set
+            {
+                if (SetProperty(ref _previewIndex, value))
+                {
+                    RefreshPreviewHtml();
+                    RaisePreviewCommandsCanExecute();
+                    OnPropertyChanged(nameof(SelectedPreviewRecipient));
+                    OnPropertyChanged(nameof(PreviewPositionText));
+                }
+            }
+        }
+
+        public PreviewRecipient SelectedPreviewRecipient
+        {
+            get => PreviewIndex >= 0 && PreviewIndex < PreviewRecipients.Count ? PreviewRecipients[PreviewIndex] : null;
+            set
+            {
+                if (value != null)
+                {
+                    var idx = PreviewRecipients.IndexOf(value);
+                    if (idx >= 0 && idx != PreviewIndex)
+                        PreviewIndex = idx;
+                }
+            }
+        }
+
+        public string PreviewPositionText =>
+            PreviewRecipients.Count == 0 ? "0 / 0" : $"{PreviewIndex + 1} / {PreviewRecipients.Count}";
+
+        /// <summary>
+        /// Resolved HTML shown in the preview WebView2 for the current recipient.
+        /// </summary>
+        public string PreviewHtml
+        {
+            get => _previewHtml;
+            private set => SetProperty(ref _previewHtml, value);
+        }
+
         public ICommand GenerateTemplateCommand { get; }
         public ICommand SendTestEmailCommand { get; }
         public ICommand SendToAllMembersCommand { get; }
+        public ICommand SaveTemplateCommand { get; }
+        public ICommand LoadTemplateCommand { get; }
+        public ICommand DeleteTemplateCommand { get; }
+        public ICommand RefreshTemplatesCommand { get; }
+        public ICommand RefreshPreviewCommand { get; }
+        public ICommand PreviousPreviewCommand { get; }
+        public ICommand NextPreviewCommand { get; }
+        public ICommand SendCurrentPreviewCommand { get; }
 
         private bool CanExecuteGenerateTemplate(object parameter)
         {
@@ -217,7 +329,8 @@ namespace NameParser.UI.ViewModels
             sb.AppendLine("</div>");
             sb.AppendLine("<div style='margin-left: 40px;'>");
             sb.AppendLine("<p style='margin: 5px 0; color: #555;'><strong>Lieu :</strong> Rendez-vous à la piste</p>");
-            sb.AppendLine("<p style='margin: 5px 0; color: #555; font-style: bold;'><strong>[Programme à définir]</strong></p>");
+            sb.AppendLine("<p style='margin: 5px 0; color: #555; font-style: bold;'><strong>Proposition d'entraînement : [Programme à définir]</strong></p>");
+            sb.AppendLine(PaceTablePlaceholder);
             sb.AppendLine("</div>");
             sb.AppendLine("</div>");
 
@@ -234,10 +347,15 @@ namespace NameParser.UI.ViewModels
             sb.AppendLine("<li>17h00 à la barrière du bois de la Vecquée</li>");
             sb.AppendLine("</ul>");
             sb.AppendLine("<p style='margin: 5px 0; color: #555;'><strong>Activité :</strong> Entraînements accompagnés de 8 à 13 km dans les bois environnants</p>");
+            sb.AppendLine("<p style='margin: 5px 0; color: #555; font-style: bold;'><strong>Proposition d'entraînement : [Programme à définir]</strong></p>");
+            sb.AppendLine(PaceTablePlaceholder);
             sb.AppendLine("</div>");
             sb.AppendLine("</div>");
 
             sb.AppendLine("</div>");
+
+            // Placeholder for the per-recipient VMA block (resolved in BuildBodyForRecipient).
+            sb.AppendLine(VmaBlockPlaceholder);
 
             // Results of the week
             sb.AppendLine("<h2 style='color: #4CAF50;'>🏆 Résultats de la Semaine Précédente</h2>");
@@ -636,31 +754,385 @@ namespace NameParser.UI.ViewModels
             public double? Vma { get; set; }
         }
 
+        // ------------------------------------------------------------------
+        //  Templates (save / load / delete)
+        // ------------------------------------------------------------------
+
+        private void LoadTemplates()
+        {
+            try
+            {
+                var previouslySelectedId = SelectedTemplate?.Id;
+                SavedTemplates.Clear();
+                foreach (var t in _emailTemplateRepository.GetAll())
+                {
+                    SavedTemplates.Add(new EmailTemplateItem
+                    {
+                        Id = t.Id,
+                        Name = t.Name,
+                        Subject = t.Subject,
+                        Body = t.Body
+                    });
+                }
+
+                if (previouslySelectedId.HasValue)
+                    SelectedTemplate = SavedTemplates.FirstOrDefault(t => t.Id == previouslySelectedId.Value);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Impossible de charger les templates : {ex.Message}";
+            }
+        }
+
+        private void ExecuteSaveTemplate(object parameter)
+        {
+            if (string.IsNullOrWhiteSpace(TemplateName))
+                return;
+
+            try
+            {
+                var saved = _emailTemplateRepository.Save(TemplateName, EmailSubject, EmailBody);
+                LoadTemplates();
+                SelectedTemplate = SavedTemplates.FirstOrDefault(t => t.Id == saved.Id);
+                StatusMessage = $"✅ Template « {saved.Name} » enregistré.";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ Erreur à l'enregistrement du template : {ex.Message}";
+                MessageBox.Show($"Erreur à l'enregistrement du template :\n\n{ex.Message}",
+                    "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ExecuteLoadTemplate(object parameter)
+        {
+            if (SelectedTemplate == null)
+                return;
+
+            EmailSubject = SelectedTemplate.Subject;
+            EmailBody = SelectedTemplate.Body;
+            ((RelayCommand)SendToAllMembersCommand).RaiseCanExecuteChanged();
+            StatusMessage = $"Template « {SelectedTemplate.Name} » chargé dans l'éditeur.";
+        }
+
+        private void ExecuteDeleteTemplate(object parameter)
+        {
+            if (SelectedTemplate == null)
+                return;
+
+            var name = SelectedTemplate.Name;
+            var result = MessageBox.Show($"Supprimer le template « {name} » ?",
+                "Confirmer", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            try
+            {
+                _emailTemplateRepository.Delete(SelectedTemplate.Id);
+                LoadTemplates();
+                SelectedTemplate = null;
+                StatusMessage = $"Template « {name} » supprimé.";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ Erreur à la suppression : {ex.Message}";
+            }
+        }
+
+        // ------------------------------------------------------------------
+        //  Preview / mail-merge (per-member resolved preview)
+        // ------------------------------------------------------------------
+
         /// <summary>
-        /// Resolves every "X% VMA"/"X-Y% VMA" segment in the email body into a
-        /// recap block (reference VMA + paces) computed for the recipient's VMA.
-        /// When the recipient has no VMA, the body is returned unchanged.
+        /// Rebuilds the list of preview recipients: a first "raw template" entry,
+        /// then every database member with an email address (resolved VMA).
+        /// </summary>
+        public void LoadPreviewRecipients()
+        {
+            try
+            {
+                PreviewRecipients.Clear();
+
+                // First item: the raw template (no member resolution).
+                PreviewRecipients.Add(new PreviewRecipient
+                {
+                    DisplayName = "Template (brut)",
+                    IsRawTemplate = true
+                });
+
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var member in _databaseMemberRepository.GetAll())
+                {
+                    var email = CleanEmailAddress(member.Email);
+                    if (string.IsNullOrWhiteSpace(email) || !seen.Add(email))
+                        continue;
+
+                    var name = $"{member.FirstName} {member.LastName}".Trim();
+                    PreviewRecipients.Add(new PreviewRecipient
+                    {
+                        DisplayName = string.IsNullOrWhiteSpace(name) ? email : $"{name} <{email}>",
+                        FirstName = member.FirstName,
+                        LastName = member.LastName,
+                        Email = email
+                    });
+                }
+
+                OnPropertyChanged(nameof(PreviewPositionText));
+                // Reset to the first recipient and refresh the rendered HTML.
+                PreviewIndex = 0;
+                RefreshPreviewHtml();
+                RaisePreviewCommandsCanExecute();
+                OnPropertyChanged(nameof(SelectedPreviewRecipient));
+
+                StatusMessage = $"{PreviewRecipients.Count - 1} destinataire(s) chargé(s) pour la prévisualisation.";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Impossible de charger les destinataires : {ex.Message}";
+            }
+        }
+
+        private void MovePreview(int delta)
+        {
+            var target = PreviewIndex + delta;
+            if (target >= 0 && target < PreviewRecipients.Count)
+                PreviewIndex = target;
+        }
+
+        private void RefreshPreviewHtml()
+        {
+            var recipient = SelectedPreviewRecipient;
+            if (recipient == null)
+            {
+                PreviewHtml = string.Empty;
+                return;
+            }
+
+            try
+            {
+                VmaSelection vma = recipient.IsRawTemplate
+                    ? null
+                    : SelectVma(recipient.FirstName, recipient.LastName);
+
+                PreviewHtml = BuildBodyForRecipient(vma);
+            }
+            catch (Exception ex)
+            {
+                PreviewHtml = $"<p style='color:red;'>Erreur de prévisualisation : {System.Net.WebUtility.HtmlEncode(ex.Message)}</p>";
+            }
+        }
+
+        private void RaisePreviewCommandsCanExecute()
+        {
+            ((RelayCommand)PreviousPreviewCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)NextPreviewCommand).RaiseCanExecuteChanged();
+            ((RelayCommand)SendCurrentPreviewCommand).RaiseCanExecuteChanged();
+        }
+
+        private bool CanSendCurrentPreview()
+        {
+            var recipient = SelectedPreviewRecipient;
+            return recipient != null
+                && !recipient.IsRawTemplate
+                && !string.IsNullOrWhiteSpace(recipient.Email)
+                && !string.IsNullOrWhiteSpace(EmailSubject)
+                && !string.IsNullOrWhiteSpace(EmailBody)
+                && !string.IsNullOrWhiteSpace(GmailAddress)
+                && !string.IsNullOrWhiteSpace(GmailAppPassword);
+        }
+
+        private async void ExecuteSendCurrentPreview(object parameter)
+        {
+            var recipient = SelectedPreviewRecipient;
+            if (recipient == null || recipient.IsRawTemplate || string.IsNullOrWhiteSpace(recipient.Email))
+                return;
+
+            try
+            {
+                IsSending = true;
+                StatusMessage = $"Envoi à {recipient.Email}...";
+
+                var vma = SelectVma(recipient.FirstName, recipient.LastName);
+                await SendEmailAsync(recipient.Email, EmailSubject, BuildBodyForRecipient(vma));
+
+                StatusMessage = $"✅ Email envoyé à {recipient.Email}.";
+                MessageBox.Show($"Email envoyé à {recipient.Email}.",
+                    "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ Erreur d'envoi : {ex.Message}";
+                MessageBox.Show($"Erreur d'envoi :\n\n{ex.Message}",
+                    "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                IsSending = false;
+            }
+        }
+
+        /// <summary>
+        /// Lightweight view item for a saved email template shown in the templates list.
+        /// </summary>
+        public sealed class EmailTemplateItem
+        {
+            public int Id { get; set; }
+            public string Name { get; set; }
+            public string Subject { get; set; }
+            public string Body { get; set; }
+        }
+
+        /// <summary>
+        /// A single preview recipient: either the raw template or a resolvable member.
+        /// </summary>
+        public sealed class PreviewRecipient
+        {
+            public string DisplayName { get; set; }
+            public bool IsRawTemplate { get; set; }
+            public string FirstName { get; set; }
+            public string LastName { get; set; }
+            public string Email { get; set; }
+        }
+
+        /// <summary>
+        /// Marker inserted in the generated template; replaced per recipient by the
+        /// dedicated VMA block (calculated / extrapolated VMA + races).
+        /// </summary>
+        private const string VmaBlockPlaceholder = "<!--VMA_BLOCK-->";
+
+        /// <summary>
+        /// Marker inserted after each day's training programme; replaced per recipient
+        /// by a formatted pace table resolving the "% VMA" tokens of that day's programme.
+        /// </summary>
+        private const string PaceTablePlaceholder = "<!--PACE_TABLE-->";
+
+        /// <summary>
+        /// Resolves the email body for a recipient: injects the dedicated VMA block and,
+        /// for each day's training programme, a formatted pace table (one row per distinct
+        /// "% VMA" of that day) instead of resolving every token inline ("sapin de Noël").
+        /// When the recipient has no VMA, the pace/VMA placeholders are simply removed.
         /// </summary>
         private string BuildBodyForRecipient(VmaSelection vma)
         {
             var body = EmailBody ?? string.Empty;
-            return NameParser.Application.Services.TrainingPaceCalculator.Resolve(
-                body,
-                vma?.Vma,
-                isHtml: true,
-                vmaDate: vma?.RecordedDate,
-                isExtrapolated: vma?.IsExtrapolated ?? false);
+
+            // Inject the dedicated VMA block (or remove the placeholder when no data).
+            body = body.Replace(VmaBlockPlaceholder, BuildVmaBlock(vma));
+
+            // Resolve each day's pace table from the programme text that precedes its
+            // placeholder (segment between the previous placeholder and this one).
+            body = ResolvePaceTables(body, vma);
+
+            return body;
+        }
+
+        /// <summary>
+        /// Replaces every <see cref="PaceTablePlaceholder"/> with a pace table built from
+        /// the "% VMA" tokens found in the text segment that precedes it. Segments are
+        /// delimited by the previous placeholder (or the start of the body).
+        /// </summary>
+        private string ResolvePaceTables(string body, VmaSelection vma)
+        {
+            if (string.IsNullOrEmpty(body) || body.IndexOf(PaceTablePlaceholder, StringComparison.Ordinal) < 0)
+                return body;
+
+            var sb = new StringBuilder();
+            int searchStart = 0;
+            int segmentStart = 0;
+
+            while (true)
+            {
+                int idx = body.IndexOf(PaceTablePlaceholder, searchStart, StringComparison.Ordinal);
+                if (idx < 0)
+                {
+                    sb.Append(body.Substring(segmentStart));
+                    break;
+                }
+
+                // Text of this day's programme (used to detect the "% VMA" tokens).
+                var segment = body.Substring(segmentStart, idx - segmentStart);
+
+                // Append the segment, then the resolved pace table in place of the marker.
+                sb.Append(segment);
+                sb.Append(NameParser.Application.Services.TrainingPaceCalculator.BuildPaceTableHtml(
+                    segment,
+                    vma?.Vma,
+                    vmaDate: vma?.RecordedDate,
+                    isExtrapolated: vma?.IsExtrapolated ?? false));
+
+                int next = idx + PaceTablePlaceholder.Length;
+                segmentStart = next;
+                searchStart = next;
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Builds the dedicated VMA HTML block shown between the training blocks and the
+        /// previous-week results: calculated (tested) VMA, extrapolated (recent-races) VMA
+        /// and the list of races used as a basis. Returns an empty string when the
+        /// recipient has no VMA data.
+        /// </summary>
+        private static string BuildVmaBlock(VmaSelection vma)
+        {
+            if (vma == null || (!vma.CalculatedVma.HasValue && !vma.ExtrapolatedVma.HasValue))
+                return string.Empty;
+
+            var fr = CultureInfo.GetCultureInfo("fr-FR");
+
+            string Format(double? value, DateTime? date)
+            {
+                if (!value.HasValue)
+                    return "-";
+                var line = $"{value.Value.ToString("0.0", fr)} km/h";
+                if (date.HasValue)
+                    line += $"<br/><span style='font-size: 12px; color: #777;'>le {date.Value.ToString("dd/MM/yyyy", fr)}</span>";
+                return line;
+            }
+
+            var races = vma.Races != null && vma.Races.Count > 0
+                ? string.Join(", ", vma.Races)
+                : "-";
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<h2 style='color: #9C27B0;'>⚡ Ta VMA</h2>");
+            sb.AppendLine("<table style='border-collapse: collapse; margin: 15px 0; width: 100%; max-width: 500px; font-family: Arial, sans-serif;'>");
+            sb.AppendLine("<tr style='background-color: #9C27B0; color: white;'>");
+            sb.AppendLine("<th style='padding: 10px; border: 1px solid #ccc; text-align: left;'>VMA Calculée</th>");
+            sb.AppendLine("<th style='padding: 10px; border: 1px solid #ccc; text-align: left;'>VMA extrapolée</th>");
+            sb.AppendLine("</tr>");
+            sb.AppendLine("<tr>");
+            sb.AppendLine($"<td style='padding: 10px; border: 1px solid #ccc;'>{Format(vma.CalculatedVma, vma.CalculatedDate)}</td>");
+            sb.AppendLine($"<td style='padding: 10px; border: 1px solid #ccc;'>{Format(vma.ExtrapolatedVma, vma.ExtrapolatedDate)}</td>");
+            sb.AppendLine("</tr>");
+            sb.AppendLine("<tr>");
+            sb.AppendLine("<td style='padding: 10px; border: 1px solid #ccc;'></td>");
+            sb.AppendLine($"<td style='padding: 10px; border: 1px solid #ccc;'><strong>Courses :</strong> {races}</td>");
+            sb.AppendLine("</tr>");
+            sb.AppendLine("</table>");
+
+            return sb.ToString();
         }
 
         /// <summary>
         /// Represents the VMA selected for a recipient: the most recent tested VMA when
         /// available, otherwise the most recent extrapolated VMA, together with its date.
+        /// Also carries the data needed to build the dedicated VMA block (tested VMA,
+        /// recent-races extrapolated VMA and the races it is based on).
         /// </summary>
         private sealed class VmaSelection
         {
             public double Vma { get; set; }
             public DateTime RecordedDate { get; set; }
             public bool IsExtrapolated { get; set; }
+
+            // Data for the dedicated VMA block.
+            public double? CalculatedVma { get; set; }
+            public DateTime? CalculatedDate { get; set; }
+            public double? ExtrapolatedVma { get; set; }
+            public DateTime? ExtrapolatedDate { get; set; }
+            public List<string> Races { get; set; } = new List<string>();
         }
 
         /// <summary>
@@ -670,29 +1142,74 @@ namespace NameParser.UI.ViewModels
         private VmaSelection SelectVma(string firstName, string lastName)
         {
             var history = _databaseMemberRepository.GetVmaHistory(firstName, lastName);
-            if (history == null || history.Count == 0)
-                return null;
 
-            var tested = history
+            var tested = history?
                 .Where(h => !h.IsExtrapolated)
                 .OrderByDescending(h => h.RecordedDate)
                 .ThenByDescending(h => h.Id)
                 .FirstOrDefault();
 
-            var chosen = tested ?? history
+            var extrapolated = history?
                 .Where(h => h.IsExtrapolated)
                 .OrderByDescending(h => h.RecordedDate)
                 .ThenByDescending(h => h.Id)
                 .FirstOrDefault();
 
-            if (chosen == null || chosen.Vma <= 0)
+            // Recent-races VMA (estimate over the last races) + the races used as basis.
+            double? recentRacesVma = null;
+            DateTime? recentRacesDate = null;
+            var races = new List<string>();
+            try
+            {
+                var recentLog = _recentRaceVmaRepository.GetForMember(firstName, lastName);
+                if (recentLog != null)
+                {
+                    if (recentLog.AverageVma.HasValue && recentLog.AverageVma.Value > 0)
+                    {
+                        recentRacesVma = recentLog.AverageVma.Value;
+                        recentRacesDate = recentLog.CreatedDate;
+                    }
+
+                    if (recentLog.Lines != null)
+                    {
+                        races = recentLog.Lines
+                            .Where(l => !string.IsNullOrWhiteSpace(l.RaceName))
+                            .Select(l => l.RaceName.Trim())
+                            .ToList();
+                    }
+                }
+            }
+            catch
+            {
+                // Recent-races table may not exist yet; ignore and fall back to history.
+            }
+
+            // The extrapolated VMA shown in the block prefers the recent-races estimate,
+            // otherwise the most recent extrapolated history entry.
+            double? blockExtrapolated = recentRacesVma
+                ?? (extrapolated != null && extrapolated.Vma > 0 ? (double?)extrapolated.Vma : null);
+            DateTime? blockExtrapolatedDate = recentRacesVma.HasValue
+                ? recentRacesDate
+                : (extrapolated != null && extrapolated.Vma > 0 ? (DateTime?)extrapolated.RecordedDate : null);
+            double? blockCalculated = tested != null && tested.Vma > 0 ? (double?)tested.Vma : null;
+            DateTime? blockCalculatedDate = tested != null && tested.Vma > 0 ? (DateTime?)tested.RecordedDate : null;
+
+            // The reference VMA used to resolve "% VMA" paces: tested first, then extrapolated.
+            var chosen = tested ?? extrapolated;
+
+            if (chosen == null && !blockCalculated.HasValue && !blockExtrapolated.HasValue)
                 return null;
 
             return new VmaSelection
             {
-                Vma = chosen.Vma,
-                RecordedDate = chosen.RecordedDate,
-                IsExtrapolated = chosen.IsExtrapolated
+                Vma = chosen?.Vma ?? 0,
+                RecordedDate = chosen?.RecordedDate ?? DateTime.Now,
+                IsExtrapolated = chosen?.IsExtrapolated ?? false,
+                CalculatedVma = blockCalculated,
+                CalculatedDate = blockCalculatedDate,
+                ExtrapolatedVma = blockExtrapolated,
+                ExtrapolatedDate = blockExtrapolatedDate,
+                Races = races
             };
         }
 

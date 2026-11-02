@@ -158,7 +158,9 @@ namespace NameParser.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RaceId");
+                    b.HasIndex("RaceId", "MemberFirstName", "MemberLastName", "Position")
+                        .IsUnique()
+                        .HasFilter("[Position] IS NOT NULL");
 
                     b.ToTable("Classifications");
                 });
@@ -204,6 +206,63 @@ namespace NameParser.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("EmailLogs");
+                });
+
+            modelBuilder.Entity("NameParser.Infrastructure.Data.Models.MemberEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Email")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FirstName")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("IsChallenger")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsMember")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LastName")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastName", "FirstName");
+
+                    b.ToTable("Members");
+                });
+
+            modelBuilder.Entity("NameParser.Infrastructure.Data.Models.MemberVmaHistoryEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsExtrapolated")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("RecordedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<double>("Vma")
+                        .HasColumnType("float");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MemberId");
+
+                    b.ToTable("MemberVmaHistories");
                 });
 
             modelBuilder.Entity("NameParser.Infrastructure.Data.Models.RaceEntity", b =>
@@ -330,6 +389,137 @@ namespace NameParser.Migrations
                     b.ToTable("RaceEvents");
                 });
 
+            modelBuilder.Entity("NameParser.Infrastructure.Data.Models.RecentRaceVmaLineEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("DistanceKm")
+                        .HasColumnType("int");
+
+                    b.Property<double?>("EstimatedVma")
+                        .HasColumnType("float");
+
+                    b.Property<DateTime?>("RaceDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RaceName")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("RecentRaceVmaLogId")
+                        .HasColumnType("int");
+
+                    b.Property<double>("Speed")
+                        .HasColumnType("float");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecentRaceVmaLogId");
+
+                    b.ToTable("RecentRaceVmaLines");
+                });
+
+            modelBuilder.Entity("NameParser.Infrastructure.Data.Models.RecentRaceVmaLogEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<double?>("AverageVma")
+                        .HasColumnType("float");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsSuccess")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MemberFirstName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("MemberLastName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("RaceCount")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MemberLastName", "MemberFirstName");
+
+                    b.ToTable("RecentRaceVmaLogs");
+                });
+
+            modelBuilder.Entity("NameParser.Infrastructure.Data.Models.VmaExtrapolationLogEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CalibrationPointCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<double?>("Intercept")
+                        .HasColumnType("float");
+
+                    b.Property<bool>("IsSuccess")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MemberFirstName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("MemberLastName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<double?>("PredictedVma")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("Slope")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("TargetSpeed")
+                        .HasColumnType("float");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("VmaExtrapolationLogs");
+                });
+
             modelBuilder.Entity("NameParser.Infrastructure.Data.Models.ChallengeRaceEventEntity", b =>
                 {
                     b.HasOne("NameParser.Infrastructure.Data.Models.ChallengeEntity", "Challenge")
@@ -360,6 +550,17 @@ namespace NameParser.Migrations
                     b.Navigation("Race");
                 });
 
+            modelBuilder.Entity("NameParser.Infrastructure.Data.Models.MemberVmaHistoryEntity", b =>
+                {
+                    b.HasOne("NameParser.Infrastructure.Data.Models.MemberEntity", "Member")
+                        .WithMany("VmaHistory")
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Member");
+                });
+
             modelBuilder.Entity("NameParser.Infrastructure.Data.Models.RaceEntity", b =>
                 {
                     b.HasOne("NameParser.Infrastructure.Data.Models.RaceEventEntity", "RaceEvent")
@@ -379,6 +580,27 @@ namespace NameParser.Migrations
                         .IsRequired();
 
                     b.Navigation("RaceEvent");
+                });
+
+            modelBuilder.Entity("NameParser.Infrastructure.Data.Models.RecentRaceVmaLineEntity", b =>
+                {
+                    b.HasOne("NameParser.Infrastructure.Data.Models.RecentRaceVmaLogEntity", "RecentRaceVmaLog")
+                        .WithMany("Lines")
+                        .HasForeignKey("RecentRaceVmaLogId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RecentRaceVmaLog");
+                });
+
+            modelBuilder.Entity("NameParser.Infrastructure.Data.Models.MemberEntity", b =>
+                {
+                    b.Navigation("VmaHistory");
+                });
+
+            modelBuilder.Entity("NameParser.Infrastructure.Data.Models.RecentRaceVmaLogEntity", b =>
+                {
+                    b.Navigation("Lines");
                 });
 #pragma warning restore 612, 618
         }

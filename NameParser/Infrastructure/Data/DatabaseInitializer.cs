@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using NameParser.Infrastructure.Data.Models;
 using Newtonsoft.Json;
@@ -428,9 +429,71 @@ namespace NameParser.Infrastructure.Data
                             PRINT 'VmaExtrapolationLogs table created';
                         END";
                     command.ExecuteNonQuery();
+
+                    // Create RecentRaceVmaLogs table if it doesn't exist
+                    command.CommandText = @"
+                        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[RecentRaceVmaLogs]') AND type in (N'U'))
+                        BEGIN
+                            CREATE TABLE [dbo].[RecentRaceVmaLogs] (
+                                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                [MemberFirstName] NVARCHAR(100) NOT NULL,
+                                [MemberLastName] NVARCHAR(100) NOT NULL,
+                                [CreatedDate] DATETIME2(7) NOT NULL,
+                                [AverageVma] FLOAT NULL,
+                                [RaceCount] INT NOT NULL DEFAULT 0,
+                                [IsSuccess] BIT NOT NULL DEFAULT 0,
+                                [Details] NVARCHAR(1000) NULL
+                            );
+                            CREATE NONCLUSTERED INDEX [IX_RecentRaceVmaLogs_Member]
+                                ON [dbo].[RecentRaceVmaLogs] ([MemberLastName] ASC, [MemberFirstName] ASC);
+                            PRINT 'RecentRaceVmaLogs table created';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Create RecentRaceVmaLines table if it doesn't exist
+                    command.CommandText = @"
+                        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[RecentRaceVmaLines]') AND type in (N'U'))
+                        BEGIN
+                            CREATE TABLE [dbo].[RecentRaceVmaLines] (
+                                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                [RecentRaceVmaLogId] INT NOT NULL,
+                                [RaceName] NVARCHAR(300) NULL,
+                                [DistanceKm] INT NULL,
+                                [RaceDate] DATETIME2(7) NULL,
+                                [Speed] FLOAT NOT NULL,
+                                [EstimatedVma] FLOAT NULL,
+                                CONSTRAINT [FK_RecentRaceVmaLines_RecentRaceVmaLogs_RecentRaceVmaLogId]
+                                    FOREIGN KEY ([RecentRaceVmaLogId]) REFERENCES [dbo].[RecentRaceVmaLogs] ([Id]) ON DELETE CASCADE
+                            );
+                            CREATE NONCLUSTERED INDEX [IX_RecentRaceVmaLines_RecentRaceVmaLogId]
+                                ON [dbo].[RecentRaceVmaLines] ([RecentRaceVmaLogId] ASC);
+                            PRINT 'RecentRaceVmaLines table created';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Create EmailTemplates table if it doesn't exist
+                    command.CommandText = @"
+                        IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[EmailTemplates]') AND type in (N'U'))
+                        BEGIN
+                            CREATE TABLE [dbo].[EmailTemplates] (
+                                [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                [Name] NVARCHAR(200) NOT NULL,
+                                [Subject] NVARCHAR(500) NULL,
+                                [Body] NVARCHAR(MAX) NULL,
+                                [CreatedDate] DATETIME2(7) NOT NULL,
+                                [UpdatedDate] DATETIME2(7) NOT NULL
+                            );
+                            CREATE UNIQUE NONCLUSTERED INDEX [IX_EmailTemplates_Name]
+                                ON [dbo].[EmailTemplates] ([Name] ASC);
+                            PRINT 'EmailTemplates table created';
+                        END";
+                    command.ExecuteNonQuery();
                 }
 
                 connection.Close();
+
+                // One-time repair of mojibake accents on members already stored in the DB.
+                RepairMemberEncoding(context);
 
                 // One-time migration of member data from the legacy JSON files into the database.
                 SeedMembersFromJson(context);
@@ -439,6 +502,49 @@ namespace NameParser.Infrastructure.Data
             {
                 System.Diagnostics.Debug.WriteLine($"Migration warning: {ex.Message}");
                 // Don't throw - allow app to continue if migration fails
+            }
+        }
+
+        /// <summary>
+        /// One-time repair of members already persisted in the database whose
+        /// FirstName/LastName/Email contain mojibake (double-encoded UTF-8/Latin-1)
+        /// accents. Only rows that actually change are updated, so it is safe to run
+        /// on every startup.
+        /// </summary>
+        private static void RepairMemberEncoding(RaceManagementContext context)
+        {
+            try
+            {
+                var members = context.Members.ToList();
+                var changed = 0;
+
+                foreach (var member in members)
+                {
+                    var fixedFirst = FixEncoding(member.FirstName);
+                    var fixedLast = FixEncoding(member.LastName);
+                    var fixedEmail = FixEncoding(member.Email);
+
+                    if (!string.Equals(fixedFirst, member.FirstName, StringComparison.Ordinal) ||
+                        !string.Equals(fixedLast, member.LastName, StringComparison.Ordinal) ||
+                        !string.Equals(fixedEmail, member.Email, StringComparison.Ordinal))
+                    {
+                        member.FirstName = fixedFirst;
+                        member.LastName = fixedLast;
+                        member.Email = fixedEmail;
+                        changed++;
+                    }
+                }
+
+                if (changed > 0)
+                {
+                    context.SaveChanges();
+                    System.Diagnostics.Debug.WriteLine($"Repaired encoding on {changed} member(s).");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Member encoding repair warning: {ex.Message}");
+                // Don't throw - allow app to continue even if the repair fails
             }
         }
 
@@ -522,7 +628,46 @@ namespace NameParser.Infrastructure.Data
                 return Enumerable.Empty<SeedMemberDto>();
 
             var json = File.ReadAllText(filePath);
-            return JsonConvert.DeserializeObject<List<SeedMemberDto>>(json) ?? new List<SeedMemberDto>();
+            var dtos = JsonConvert.DeserializeObject<List<SeedMemberDto>>(json) ?? new List<SeedMemberDto>();
+
+            // Repair any mojibake (double-encoded UTF-8/Latin-1) accents coming from the
+            // legacy JSON files, mirroring JsonMemberRepository so DB-seeded members keep
+            // correct accents.
+            foreach (var dto in dtos)
+            {
+                dto.FirstName = FixEncoding(dto.FirstName);
+                dto.LastName = FixEncoding(dto.LastName);
+                dto.Email = FixEncoding(dto.Email);
+            }
+
+            return dtos;
+        }
+
+        /// <summary>
+        /// Repairs mojibake (text originally UTF-8 but decoded as Latin-1, producing
+        /// sequences like "Ã©" for "é"). Returns the original value when it is not
+        /// mojibake or cannot be safely repaired.
+        /// </summary>
+        private static string FixEncoding(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return value;
+
+            // Only attempt a repair when typical mojibake markers are present.
+            if (value.IndexOf('\u00C3') < 0 && value.IndexOf('\u00C2') < 0)
+                return value;
+
+            try
+            {
+                var latin1Bytes = Encoding.GetEncoding("ISO-8859-1").GetBytes(value);
+                var strictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+                return strictUtf8.GetString(latin1Bytes);
+            }
+            catch (Exception)
+            {
+                // Not valid UTF-8 after re-encoding: keep the original value.
+                return value;
+            }
         }
 
         private class SeedMemberDto

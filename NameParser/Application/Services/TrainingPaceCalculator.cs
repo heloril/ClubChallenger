@@ -86,9 +86,64 @@ namespace NameParser.Application.Services
 		}
 
 		/// <summary>
+		/// Construit un tableau HTML d'allures à partir des pourcentages "% VMA" présents
+		/// dans <paramref name="segment"/> (une ligne par pourcentage distinct, bornes des
+		/// plages incluses). Renvoie une chaîne vide si la VMA est inconnue ou si aucun
+		/// pourcentage n'est présent.
+		/// </summary>
+		public static string BuildPaceTableHtml(string segment, double? vma, DateTime? vmaDate = null, bool isExtrapolated = false)
+		{
+			if (string.IsNullOrWhiteSpace(segment) || !vma.HasValue || vma.Value <= 0)
+				return string.Empty;
+
+			var matches = PercentVmaRegex.Matches(segment);
+			if (matches.Count == 0)
+				return string.Empty;
+
+			var percents = new List<double>();
+			foreach (Match match in matches)
+			{
+				AddPercent(percents, ParsePercent(match.Groups["low"].Value));
+				if (match.Groups["high"].Success)
+					AddPercent(percents, ParsePercent(match.Groups["high"].Value));
+			}
+
+			double vmaValue = vma.Value;
+			var vmaLabel = isExtrapolated ? "VMA extrapolée" : "VMA testée";
+			var caption = vmaDate.HasValue
+				? $"{vmaLabel} du {vmaDate.Value.ToString("dd/MM/yyyy", FrCulture)} : {FormatVma(vmaValue)} km/h"
+				: $"{vmaLabel} : {FormatVma(vmaValue)} km/h";
+
+			var sb = new StringBuilder();
+			sb.Append("<table style='border-collapse: collapse; margin: 12px 0; width: 100%; max-width: 560px; font-family: Arial, sans-serif; font-size: 13px;'>");
+			sb.Append($"<caption style='caption-side: top; text-align: left; font-weight: bold; color: #3949AB; padding: 4px 0;'>🎯 Tes allures — {caption}</caption>");
+			sb.Append("<tr style='background-color: #3949AB; color: white;'>");
+			sb.Append("<th style='padding: 8px; border: 1px solid #ccc; text-align: left;'>% VMA</th>");
+			sb.Append("<th style='padding: 8px; border: 1px solid #ccc; text-align: left;'>Allure / km</th>");
+			sb.Append("<th style='padding: 8px; border: 1px solid #ccc; text-align: left;'>Allure / 100m</th>");
+			sb.Append("<th style='padding: 8px; border: 1px solid #ccc; text-align: left;'>Vitesse</th>");
+			sb.Append("</tr>");
+
+			bool alt = false;
+			foreach (var percent in percents)
+			{
+				var rowBg = alt ? "#EEF0FB" : "#FFFFFF";
+				alt = !alt;
+				sb.Append($"<tr style='background-color: {rowBg};'>");
+				sb.Append($"<td style='padding: 8px; border: 1px solid #ccc; font-weight: bold;'>{FormatPercent(percent)}%</td>");
+				sb.Append($"<td style='padding: 8px; border: 1px solid #ccc;'>{FormatPacePerKm(vmaValue, percent)}</td>");
+				sb.Append($"<td style='padding: 8px; border: 1px solid #ccc;'>{FormatPacePer100m(vmaValue, percent)}</td>");
+				sb.Append($"<td style='padding: 8px; border: 1px solid #ccc;'>{FormatSpeed(vmaValue, percent)} km/h</td>");
+				sb.Append("</tr>");
+			}
+
+			sb.Append("</table>");
+			return sb.ToString();
+		}
+
+		/// <summary>
 		/// Renvoie l'index de la fin de la ligne (juste avant le prochain saut de ligne)
 		/// contenant la position <paramref name="startIndex"/>. Reconnaît les sauts de
-		/// ligne HTML (&lt;br&gt;, &lt;/p&gt;, &lt;/div&gt;, &lt;/li&gt;) et texte (\r, \n).
 		/// </summary>
 		private static int FindEndOfLine(string content, int startIndex, bool isHtml)
 		{

@@ -22,6 +22,7 @@ namespace NameParser.UI.ViewModels
 		private readonly DatabaseMemberRepository _memberRepository;
 		private readonly VmaExtrapolationService _vmaExtrapolationService;
 		private readonly VmaExtrapolationLogRepository _extrapolationLogRepository = new VmaExtrapolationLogRepository();
+		private readonly RecentRaceVmaRepository _recentRaceVmaRepository = new RecentRaceVmaRepository();
 		private readonly List<Member> _allMembers = new List<Member>();
 		private bool _isExtrapolating;
 
@@ -60,6 +61,7 @@ namespace NameParser.UI.ViewModels
 			ExportChallengersCommand = new RelayCommand(_ => ExportToExcel(onlyMembers: false, onlyChallengers: true, "Challengers"));
 			ExtrapolateVmaCommand = new RelayCommand(ExecuteExtrapolateVma, CanExecuteExtrapolateVma);
 			ExtrapolateAllVmaCommand = new RelayCommand(ExecuteExtrapolateAllVma, _ => !_isExtrapolating);
+			RecalculateRecentRacesVmaCommand = new RelayCommand(ExecuteRecalculateRecentRacesVma, _ => !_isExtrapolating);
 			DeleteVmaRecordCommand = new RelayCommand(ExecuteDeleteVmaRecord, p => p is VmaTimelineItem item && item.RecordId.HasValue);
 
 			LoadMembers();
@@ -78,6 +80,7 @@ namespace NameParser.UI.ViewModels
 		public ICommand ExportChallengersCommand { get; }
 		public ICommand ExtrapolateVmaCommand { get; }
 		public ICommand ExtrapolateAllVmaCommand { get; }
+		public ICommand RecalculateRecentRacesVmaCommand { get; }
 		public ICommand DeleteVmaRecordCommand { get; }
 
 		public Member SelectedMember
@@ -307,6 +310,40 @@ namespace NameParser.UI.ViewModels
 					});
 				}
 
+				try
+				{
+					var recentRaceLog = _recentRaceVmaRepository.GetForMember(SelectedMember.FirstName, SelectedMember.LastName);
+					if (recentRaceLog != null)
+					{
+						items.Add(new VmaTimelineItem
+						{
+							Date = recentRaceLog.CreatedDate,
+							Vma = recentRaceLog.AverageVma,
+							Type = "VMA 5 dernières courses",
+							Details = recentRaceLog.Details,
+							RecordId = null
+						});
+
+						foreach (var line in recentRaceLog.Lines.OrderByDescending(l => l.RaceDate))
+						{
+							var distance = line.DistanceKm.HasValue ? $" ({line.DistanceKm} km)" : string.Empty;
+							items.Add(new VmaTimelineItem
+							{
+								Date = line.RaceDate ?? recentRaceLog.CreatedDate,
+								Vma = line.EstimatedVma,
+								Type = "VMA course",
+								Details = $"{line.RaceName}{distance} — vitesse {line.Speed.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} km/h",
+								RecordId = null
+							});
+						}
+					}
+				}
+				catch
+				{
+					// Les tables "VMA dernières courses" peuvent ne pas encore exister (migration non appliquée) :
+					// on ignore sans empêcher l'affichage du reste de l'historique VMA.
+				}
+
 				foreach (var item in items.OrderByDescending(i => i.Date))
 				{
 					VmaTimeline.Add(item);
@@ -432,6 +469,46 @@ namespace NameParser.UI.ViewModels
 				_isExtrapolating = false;
 				(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
 				(ExtrapolateAllVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+			}
+		}
+
+		private async void ExecuteRecalculateRecentRacesVma(object parameter)
+		{
+			if (_isExtrapolating)
+				return;
+
+			var confirm = MessageBox.Show(
+				"Recalculer la VMA estimée sur les 5 dernières courses (3 derniers mois) de tous les membres ?",
+				"VMA sur dernières courses",
+				MessageBoxButton.YesNo,
+				MessageBoxImage.Question);
+
+			if (confirm != MessageBoxResult.Yes)
+				return;
+
+			_isExtrapolating = true;
+			(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+			(ExtrapolateAllVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+			(RecalculateRecentRacesVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+
+			try
+			{
+				var count = await Task.Run(() => _vmaExtrapolationService.RecomputeAllRecentRacesVma());
+
+				StatusMessage = $"VMA sur dernières courses recalculée : {count} membre(s) estimé(s).";
+				MessageBox.Show(StatusMessage, "VMA sur dernières courses", MessageBoxButton.OK, MessageBoxImage.Information);
+			}
+			catch (Exception ex)
+			{
+				StatusMessage = $"Error recalculating recent-races VMA: {ex.Message}";
+				MessageBox.Show(StatusMessage, "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+			}
+			finally
+			{
+				_isExtrapolating = false;
+				(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+				(ExtrapolateAllVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+				(RecalculateRecentRacesVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
 			}
 		}
 

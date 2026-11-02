@@ -69,10 +69,84 @@
         </Border>
 
         <!-- Main Content -->
-        <TabControl Grid.Row="1" PreviewKeyDown="MainTabControl_PreviewKeyDown">
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Navigation Sidebar -->
+            <Border Grid.Column="0" Background="#263238" Margin="0,0,10,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="0,10">
+                        <StackPanel.Resources>
+                            <!-- Group header style -->
+                            <Style x:Key="NavGroupHeader" TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#80CBC4"/>
+                                <Setter Property="FontSize" Value="12"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                                <Setter Property="Margin" Value="15,15,10,5"/>
+                            </Style>
+                            <!-- Nav item (radio button styled as a selectable row) -->
+                            <Style x:Key="NavItem" TargetType="RadioButton">
+                                <Setter Property="GroupName" Value="MainNav"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="Padding" Value="20,8"/>
+                                <Setter Property="Margin" Value="0"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="RadioButton">
+                                            <Border x:Name="bd" Background="Transparent" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter VerticalAlignment="Center"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="bd" Property="Background" Value="#37474F"/>
+                                                </Trigger>
+                                                <Trigger Property="IsChecked" Value="True">
+                                                    <Setter TargetName="bd" Property="Background" Value="#2196F3"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </StackPanel.Resources>
+
+                        <TextBlock Text="GESTION DES COURSES" Style="{StaticResource NavGroupHeader}"/>
+                        <RadioButton Style="{StaticResource NavItem}" IsChecked="{Binding IsSelected, ElementName=tabUpload}" Content="{Binding Localization[TabUploadProcess]}"/>
+                        <RadioButton Style="{StaticResource NavItem}" IsChecked="{Binding IsSelected, ElementName=tabRaceClassification}" Content="{Binding Localization[TabRaceClassification]}"/>
+                        <RadioButton Style="{StaticResource NavItem}" IsChecked="{Binding IsSelected, ElementName=tabRaceEventManagement}" Content="Race Event Management"/>
+
+                        <TextBlock Text="GESTION DES CHALLENGES" Style="{StaticResource NavGroupHeader}"/>
+                        <RadioButton Style="{StaticResource NavItem}" IsChecked="{Binding IsSelected, ElementName=tabChallengerClassification}" Content="{Binding Localization[TabChallengerClassification]}"/>
+                        <RadioButton Style="{StaticResource NavItem}" IsChecked="{Binding IsSelected, ElementName=tabChallengeManagement}" Content="Challenge Management"/>
+                        <RadioButton Style="{StaticResource NavItem}" IsChecked="{Binding IsSelected, ElementName=tabChallengeCalendar}" Content="Challenge Calendar"/>
+
+                        <TextBlock Text="GESTION DES MEMBRES" Style="{StaticResource NavGroupHeader}"/>
+                        <RadioButton Style="{StaticResource NavItem}" IsChecked="{Binding IsSelected, ElementName=tabMembers}" Content="👥 Members"/>
+                        <RadioButton Style="{StaticResource NavItem}" IsChecked="{Binding IsSelected, ElementName=tabVma}" Content="🏃 VMA"/>
+                        <RadioButton Style="{StaticResource NavItem}" IsChecked="{Binding IsSelected, ElementName=tabMailing}" Content="📧 Mailing"/>
+                        <RadioButton Style="{StaticResource NavItem}" IsChecked="{Binding IsSelected, ElementName=tabSend}" Content="📨 Envoi (aperçu)"/>
+
+                        <TextBlock Text="SYSTÈME" Style="{StaticResource NavGroupHeader}"/>
+                        <RadioButton Style="{StaticResource NavItem}" IsChecked="{Binding IsSelected, ElementName=tabBackup}" Content="💾 Database Backup"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Tab content (tab strip hidden; navigation driven by sidebar) -->
+            <TabControl x:Name="MainTabControl" Grid.Column="1" PreviewKeyDown="MainTabControl_PreviewKeyDown">
+                <TabControl.Resources>
+                    <Style TargetType="TabItem">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                    </Style>
+                </TabControl.Resources>
 
             <!-- Upload and Process Tab -->
-            <TabItem Header="{Binding Localization[TabUploadProcess]}">
+            <TabItem x:Name="tabUpload" Header="{Binding Localization[TabUploadProcess]}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="450"/>
@@ -272,7 +346,7 @@
             </TabItem>
 
             <!-- Race Classification Tab -->
-            <TabItem Header="{Binding Localization[TabRaceClassification]}">
+            <TabItem x:Name="tabRaceClassification" Header="{Binding Localization[TabRaceClassification]}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -487,7 +561,7 @@
             </TabItem>
 
             <!-- Challenger Classification Tab -->
-            <TabItem Header="{Binding Localization[TabChallengerClassification]}">
+            <TabItem x:Name="tabChallengerClassification" Header="{Binding Localization[TabChallengerClassification]}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -682,7 +756,7 @@
             </TabItem>
 
             <!-- Challenge Management Tab -->
-            <TabItem Header="Challenge Management">
+            <TabItem x:Name="tabChallengeManagement" Header="Challenge Management">
                 <Grid Margin="20">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -801,7 +875,7 @@
             </TabItem>
 
             <!-- Race Event Management Tab -->
-            <TabItem Header="Race Event Management">
+            <TabItem x:Name="tabRaceEventManagement" Header="Race Event Management">
                 <Grid Margin="20">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -956,7 +1030,7 @@
             </TabItem>
 
             <!-- Challenge Calendar Tab -->
-            <TabItem Header="Challenge Calendar">
+            <TabItem x:Name="tabChallengeCalendar" Header="Challenge Calendar">
                 <Grid Margin="20">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -1064,7 +1138,7 @@
             </TabItem>
 
             <!-- Unified Mailing Tab -->
-            <TabItem Header="📧 Mailing">
+            <TabItem x:Name="tabMailing" Header="📧 Mailing">
                 <Grid Margin="20">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -1107,6 +1181,33 @@
                                        Background="#4CAF50" Foreground="White" FontWeight="Bold"
                                        Height="40" Margin="5,10,5,5" HorizontalAlignment="Stretch"
                                        ToolTip="Generate email with: Training schedule + Previous week results + Current week calendar"/>
+
+                                <!-- Saved Templates (save / load / delete) -->
+                                <Border BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Margin="5,10,5,0" Padding="8">
+                                    <StackPanel>
+                                        <TextBlock Text="💾 Mes templates enregistrés" FontWeight="Bold" Margin="0,0,0,5"/>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Nom :" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                            <TextBox Text="{Binding MemberMailingViewModel.TemplateName, UpdateSourceTrigger=PropertyChanged}"
+                                                     Width="220"/>
+                                            <Button Content="💾 Enregistrer" Command="{Binding MemberMailingViewModel.SaveTemplateCommand}"
+                                                    Background="#4CAF50" Foreground="White" Width="120"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                            <TextBlock Text="Charger :" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                            <ComboBox ItemsSource="{Binding MemberMailingViewModel.SavedTemplates}"
+                                                      SelectedItem="{Binding MemberMailingViewModel.SelectedTemplate}"
+                                                      DisplayMemberPath="Name"
+                                                      Width="220"/>
+                                            <Button Content="📂 Charger" Command="{Binding MemberMailingViewModel.LoadTemplateCommand}"
+                                                    Background="#2196F3" Foreground="White" Width="110"/>
+                                            <Button Content="🗑 Supprimer" Command="{Binding MemberMailingViewModel.DeleteTemplateCommand}"
+                                                    Background="#E53935" Foreground="White" Width="110"/>
+                                            <Button Content="🔄" Command="{Binding MemberMailingViewModel.RefreshTemplatesCommand}"
+                                                    MinWidth="40" Width="40" ToolTip="Rafraîchir la liste"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
 
                             <!-- Challenge Mailing Configuration -->
@@ -1269,8 +1370,69 @@
                 </Grid>
             </TabItem>
 
+            <!-- Send / Preview Tab (mail-merge style) -->
+            <TabItem x:Name="tabSend" Header="📨 Envoi (aperçu)" DataContext="{Binding MemberMailingViewModel}">
+                <Grid Margin="20">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Toolbar: load recipients -->
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock Text="📨 Prévisualisation avant envoi" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <Button Content="🔄 Charger les destinataires" Command="{Binding RefreshPreviewCommand}"
+                                Background="#2196F3" Foreground="White" Margin="20,0,0,0" MinWidth="200"/>
+                    </StackPanel>
+
+                    <!-- Recipient navigation (mail-merge) -->
+                    <Border Grid.Row="1" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Content="◀" Command="{Binding PreviousPreviewCommand}" MinWidth="40" Width="40"
+                                    ToolTip="Destinataire précédent"/>
+                            <ComboBox Grid.Column="1" Width="320"
+                                      ItemsSource="{Binding PreviewRecipients}"
+                                      SelectedItem="{Binding SelectedPreviewRecipient}"
+                                      DisplayMemberPath="DisplayName"/>
+                            <TextBlock Grid.Column="2" Text="{Binding PreviewPositionText}" VerticalAlignment="Center"
+                                       Margin="10,0,0,0" Foreground="#555"/>
+                            <Button Grid.Column="3" Content="▶" Command="{Binding NextPreviewCommand}" MinWidth="40" Width="40"
+                                    ToolTip="Destinataire suivant"/>
+                            <Button Grid.Column="4" Content="📧 Envoyer à ce destinataire"
+                                    Command="{Binding SendCurrentPreviewCommand}"
+                                    Background="#FF9800" Foreground="White" FontWeight="Bold" MinWidth="220" Margin="10,0,0,0"/>
+                            <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center"
+                                        Visibility="{Binding IsSending, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <ProgressBar IsIndeterminate="True" Width="80" Height="18" Margin="10,0,5,0"/>
+                                <TextBlock Text="Envoi..." VerticalAlignment="Center" FontStyle="Italic"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Preview WebView2 -->
+                    <Border Grid.Row="2" BorderBrush="#E0E0E0" BorderThickness="1">
+                        <Grid x:Name="PreviewWebViewContainer">
+                            <!-- Preview WebView2 is added programmatically -->
+                        </Grid>
+                    </Border>
+
+                    <!-- Status -->
+                    <TextBlock Grid.Row="3" Text="{Binding StatusMessage}" Foreground="#555555" Margin="0,8,0,0"/>
+                </Grid>
+            </TabItem>
+
             <!-- Member Management Tab -->
-            <TabItem Header="👥 Members" DataContext="{Binding MemberManagementViewModel}">
+            <TabItem x:Name="tabMembers" Header="👥 Members" DataContext="{Binding MemberManagementViewModel}">
                 <Grid Margin="20">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -1309,53 +1471,11 @@
                                     <CheckBox Content="Challenger" IsChecked="{Binding IsChallenger}" Margin="10,5" VerticalAlignment="Center"/>
                                 </StackPanel>
 
-                                <TextBlock Text="VMA:" Grid.Row="2" Grid.Column="0"/>
-                                <TextBox Text="{Binding Vma, UpdateSourceTrigger=LostFocus}" Grid.Row="2" Grid.Column="1" ToolTip="VMA en km/h (ex: 15.5 ou 15,5)"/>
+                                    <TextBlock Text="VMA:" Grid.Row="2" Grid.Column="0"/>
+                                    <TextBox Text="{Binding Vma, UpdateSourceTrigger=LostFocus}" Grid.Row="2" Grid.Column="1" ToolTip="VMA en km/h (ex: 15.5 ou 15,5)"/>
+                                </Grid>
 
-                                <Button Content="📈 Extrapoler VMA" Command="{Binding ExtrapolateVmaCommand}" Grid.Row="2" Grid.Column="2" Grid.ColumnSpan="2"
-                                        HorizontalAlignment="Left" Margin="10,2,0,2" Padding="8,2"
-                                        ToolTip="Extrapoler la VMA à partir des temps en course (calibrée sur les VMA testées)"/>
-                            </Grid>
-
-                            <Button Content="📊 Extrapoler toutes les VMA" Command="{Binding ExtrapolateAllVmaCommand}"
-                                    HorizontalAlignment="Left" Margin="5,8,5,0" Padding="8,3"
-                                    ToolTip="Extrapoler automatiquement la VMA de tous les membres ayant plus d'une course (VMA testées comme références, meilleures 50 % des courses retenues)"/>
-
-                            <!-- VMA History & extrapolation journal (merged) -->
-                            <GroupBox Header="Historique &amp; extrapolation VMA" Margin="0,8,0,0"
-                                      Visibility="{Binding SelectedMember, Converter={StaticResource NullToVisibilityConverter}}">
-                                <DataGrid ItemsSource="{Binding VmaTimeline}"
-                                          AutoGenerateColumns="False" IsReadOnly="True"
-                                          HeadersVisibility="Column" CanUserAddRows="False"
-                                          MaxHeight="220">
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=dd/MM/yyyy HH:mm}" Width="Auto"/>
-                                        <DataGridTextColumn Header="VMA" Binding="{Binding VmaDisplay}" Width="Auto"/>
-                                        <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="Auto"/>
-                                        <DataGridTextColumn Header="Détail" Binding="{Binding Details}" Width="*">
-                                            <DataGridTextColumn.ElementStyle>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="TextWrapping" Value="Wrap"/>
-                                                    <Setter Property="ToolTip" Value="{Binding Details}"/>
-                                                </Style>
-                                            </DataGridTextColumn.ElementStyle>
-                                        </DataGridTextColumn>
-                                        <DataGridTemplateColumn Header="" Width="90">
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <Button Content="🗑 Suppr."
-                                                            Visibility="{Binding CanDelete, Converter={StaticResource BoolToVisibilityConverter}}"
-                                                            Command="{Binding DataContext.DeleteVmaRecordCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                                            CommandParameter="{Binding}"
-                                                            Padding="4,1" Margin="2"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                        </DataGridTemplateColumn>
-                                    </DataGrid.Columns>
-                                </DataGrid>
-                            </GroupBox>
-
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="5,10,5,5">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="5,10,5,5">
                                 <Button Content="Add" Command="{Binding AddMemberCommand}" Width="80"/>
                                 <Button Content="Update" Command="{Binding UpdateMemberCommand}" Width="80"/>
                                 <Button Content="Delete" Command="{Binding DeleteMemberCommand}" Width="80" Background="#F44336" Foreground="White"/>
@@ -1408,11 +1528,97 @@
                             <Button Content="📊 Export Challengers" Command="{Binding ExportChallengersCommand}" Width="160"/>
                         </StackPanel>
                     </Grid>
-                </Grid>
-            </TabItem>
+                     </Grid>
+                </TabItem>
 
-            <!-- Database Backup Tab -->
-            <TabItem Header="💾 Database Backup">
+                <!-- VMA Tab -->
+                <TabItem x:Name="tabVma" Header="🏃 VMA" DataContext="{Binding MemberManagementViewModel}">
+                    <Grid Margin="20">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Global VMA actions -->
+                        <GroupBox Header="Actions VMA globales" Grid.Row="0" Margin="0,0,0,10">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="📊 Extrapoler toutes les VMA" Command="{Binding ExtrapolateAllVmaCommand}"
+                                        Margin="5" Padding="8,3"
+                                        ToolTip="Extrapoler automatiquement la VMA de tous les membres ayant plus d'une course (VMA testées comme références, meilleures 50 % des courses retenues)"/>
+                                <Button Content="🏃 Recalculer VMA 5 dernières courses" Command="{Binding RecalculateRecentRacesVmaCommand}"
+                                        Margin="5" Padding="8,3"
+                                        ToolTip="Recalculer pour tous les membres la VMA estimée sur les 5 dernières courses des 3 derniers mois (log dédié, une VMA par course)"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Member selector -->
+                        <Grid Grid.Row="1" Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Membre :" Grid.Column="0" VerticalAlignment="Center"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding Members}"
+                                      SelectedItem="{Binding SelectedMember}"
+                                      Margin="5" Height="30">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding FirstName}"/>
+                                            <TextBlock Text=" "/>
+                                            <TextBlock Text="{Binding LastName}" FontWeight="Bold"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Button Content="📈 Extrapoler VMA" Command="{Binding ExtrapolateVmaCommand}" Grid.Column="2"
+                                    Margin="5" Padding="8,2"
+                                    ToolTip="Extrapoler la VMA à partir des temps en course (calibrée sur les VMA testées)"/>
+                        </Grid>
+
+                        <!-- VMA History & extrapolation journal (merged) -->
+                        <GroupBox Header="Historique &amp; extrapolation VMA" Grid.Row="2"
+                                  Visibility="{Binding SelectedMember, Converter={StaticResource NullToVisibilityConverter}}">
+                            <DataGrid ItemsSource="{Binding VmaTimeline}"
+                                      AutoGenerateColumns="False" IsReadOnly="True"
+                                      HeadersVisibility="Column" CanUserAddRows="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=dd/MM/yyyy HH:mm}" Width="Auto"/>
+                                    <DataGridTextColumn Header="VMA" Binding="{Binding VmaDisplay}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="Auto"/>
+                                    <DataGridTextColumn Header="Détail" Binding="{Binding Details}" Width="*">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="TextWrapping" Value="Wrap"/>
+                                                <Setter Property="ToolTip" Value="{Binding Details}"/>
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                    <DataGridTemplateColumn Header="" Width="90">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button Content="🗑 Suppr."
+                                                        Visibility="{Binding CanDelete, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                        Command="{Binding DataContext.DeleteVmaRecordCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                        CommandParameter="{Binding}"
+                                                        Padding="4,1" Margin="2"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </GroupBox>
+
+                        <!-- Status -->
+                        <TextBlock Grid.Row="3" Text="{Binding StatusMessage}" Foreground="#555555" VerticalAlignment="Center" Margin="0,10,0,0"/>
+                    </Grid>
+                </TabItem>
+
+                <!-- Database Backup Tab -->
+                <TabItem x:Name="tabBackup" Header="💾 Database Backup">
                 <Grid Margin="20">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -1585,9 +1791,10 @@
             </TabItem>
 
 
-                                    </TabControl>
+                                        </TabControl>
+                                    </Grid>
 
-                                    <!-- Status Bar -->
+                                                                <!-- Status Bar -->
                                     <Border Grid.Row="2" Background="#EEEEEE" Padding="10" Margin="0,10,0,0">
                                         <TextBlock Text="{Binding StatusMessage}" FontStyle="Italic" Foreground="#666666"/>
                                     </Border>

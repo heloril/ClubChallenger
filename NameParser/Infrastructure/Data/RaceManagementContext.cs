@@ -26,6 +26,9 @@ namespace NameParser.Infrastructure.Data
         public DbSet<MemberEntity> Members { get; set; }
         public DbSet<MemberVmaHistoryEntity> MemberVmaHistories { get; set; }
         public DbSet<VmaExtrapolationLogEntity> VmaExtrapolationLogs { get; set; }
+        public DbSet<RecentRaceVmaLogEntity> RecentRaceVmaLogs { get; set; }
+        public DbSet<RecentRaceVmaLineEntity> RecentRaceVmaLines { get; set; }
+        public DbSet<EmailTemplateEntity> EmailTemplates { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -101,6 +104,21 @@ namespace NameParser.Infrastructure.Data
                 .WithMany(m => m.VmaHistory)
                 .HasForeignKey(h => h.MemberId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Recent-races VMA log (one latest log per member) with its per-race lines
+            modelBuilder.Entity<RecentRaceVmaLogEntity>()
+                .HasIndex(l => new { l.MemberLastName, l.MemberFirstName });
+
+            modelBuilder.Entity<RecentRaceVmaLineEntity>()
+                .HasOne(l => l.RecentRaceVmaLog)
+                .WithMany(h => h.Lines)
+                .HasForeignKey(l => l.RecentRaceVmaLogId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Saved email templates: one row per named template.
+            modelBuilder.Entity<EmailTemplateEntity>()
+                .HasIndex(t => t.Name)
+                .IsUnique();
         }
     }
 }
