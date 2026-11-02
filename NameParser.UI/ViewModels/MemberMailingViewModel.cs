@@ -50,6 +50,8 @@ namespace NameParser.UI.ViewModels
         // Preview / mail-merge
         private int _previewIndex;
         private string _previewHtml;
+        private string _previewFilterType = "Tous";
+        private string _previewFilterText;
 
         // Gmail Configuration
         private string _gmailAddress;
@@ -88,6 +90,7 @@ namespace NameParser.UI.ViewModels
             PreviousPreviewCommand = new RelayCommand(_ => MovePreview(-1), _ => PreviewRecipients.Count > 0 && PreviewIndex > 0);
             NextPreviewCommand = new RelayCommand(_ => MovePreview(1), _ => PreviewRecipients.Count > 0 && PreviewIndex < PreviewRecipients.Count - 1);
             SendCurrentPreviewCommand = new RelayCommand(ExecuteSendCurrentPreview, _ => CanSendCurrentPreview());
+            SendToFilteredPreviewCommand = new RelayCommand(ExecuteSendToFilteredPreview, _ => CanSendToFilteredPreview());
 
             MailingDate = DateTime.Today;
 
@@ -265,6 +268,40 @@ namespace NameParser.UI.ViewModels
         public string PreviewPositionText =>
             PreviewRecipients.Count == 0 ? "0 / 0" : $"{PreviewIndex + 1} / {PreviewRecipients.Count}";
 
+        /// <summary>Number of actual recipients (excludes the raw template entry).</summary>
+        public int FilteredRecipientCount =>
+            PreviewRecipients.Count(r => !r.IsRawTemplate && !string.IsNullOrWhiteSpace(r.Email));
+
+        /// <summary>Label shown on the "send to filtered recipients" button, with the count.</summary>
+        public string SendToFilteredButtonText =>
+            $"📤 Envoyer aux {FilteredRecipientCount} destinataire(s)";
+
+        /// <summary>Available filter options for the preview recipients list.</summary>
+        public ObservableCollection<string> PreviewFilterTypes { get; } =
+            new ObservableCollection<string> { "Tous", "Membres", "Challengers" };
+
+        /// <summary>Selected recipient type filter: "Tous", "Membres" or "Challengers".</summary>
+        public string PreviewFilterType
+        {
+            get => _previewFilterType;
+            set
+            {
+                if (SetProperty(ref _previewFilterType, value))
+                    LoadPreviewRecipients();
+            }
+        }
+
+        /// <summary>Free-text filter applied on the recipient name / email.</summary>
+        public string PreviewFilterText
+        {
+            get => _previewFilterText;
+            set
+            {
+                if (SetProperty(ref _previewFilterText, value))
+                    LoadPreviewRecipients();
+            }
+        }
+
         /// <summary>
         /// Resolved HTML shown in the preview WebView2 for the current recipient.
         /// </summary>
@@ -285,6 +322,7 @@ namespace NameParser.UI.ViewModels
         public ICommand PreviousPreviewCommand { get; }
         public ICommand NextPreviewCommand { get; }
         public ICommand SendCurrentPreviewCommand { get; }
+        public ICommand SendToFilteredPreviewCommand { get; }
 
         private bool CanExecuteGenerateTemplate(object parameter)
         {
@@ -360,7 +398,7 @@ namespace NameParser.UI.ViewModels
             // Mardi
             sb.AppendLine("<div style='background-color: #FFFFFF; padding: 12px 14px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #FF9800; box-shadow: 0 1px 3px rgba(0,0,0,0.1);'>");
             sb.AppendLine("<p style='margin: 0 0 4px 0; font-size: 15px; font-weight: bold; color: #FF9800;'>📅 Mardi 17h00 <span style='font-size: 13px; font-weight: normal; color: #777;'>· Rendez-vous à la piste</span></p>");
-            sb.AppendLine("<p style='margin: 4px 0; color: #333; font-size: 14px;'>🏋️ <strong>Proposition d'entraînement :</strong> [Programme à définir]</p>");
+            sb.AppendLine("<p style='margin: 4px 0; color: #333; font-size: 14px;'>📋 <strong>Entraînement :</strong> [Programme à définir]</p>");
             sb.AppendLine(PaceTablePlaceholder);
             sb.AppendLine("</div>");
 
@@ -368,7 +406,7 @@ namespace NameParser.UI.ViewModels
             sb.AppendLine("<div style='background-color: #FFFFFF; padding: 12px 14px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #4CAF50; box-shadow: 0 1px 3px rgba(0,0,0,0.1);'>");
             sb.AppendLine("<p style='margin: 0 0 4px 0; font-size: 15px; font-weight: bold; color: #4CAF50;'>🏃 Jeudi 16h30 - 17h00</p>");
             sb.AppendLine("<p style='margin: 4px 0; color: #777; font-size: 13px;'>Départ : 16h30 au parking de la piste, ou 17h00 à la barrière du bois de la Vecquée · 8 à 13 km dans les bois.</p>");
-            sb.AppendLine("<p style='margin: 4px 0; color: #333; font-size: 14px;'>🏋️ <strong>Proposition d'entraînement :</strong> [Programme à définir]</p>");
+            sb.AppendLine("<p style='margin: 4px 0; color: #333; font-size: 14px;'>📋 <strong>Entraînement :</strong> [Programme à définir]</p>");
             sb.AppendLine(PaceTablePlaceholder);
             sb.AppendLine("</div>");
 
@@ -886,23 +924,41 @@ namespace NameParser.UI.ViewModels
                 });
 
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var filterText = (_previewFilterText ?? string.Empty).Trim();
                 foreach (var member in _databaseMemberRepository.GetAll())
                 {
                     var email = CleanEmailAddress(member.Email);
                     if (string.IsNullOrWhiteSpace(email) || !seen.Add(email))
                         continue;
 
+                    // Recipient type filter.
+                    if (_previewFilterType == "Membres" && !member.IsMember)
+                        continue;
+                    if (_previewFilterType == "Challengers" && !member.IsChallenger)
+                        continue;
+
                     var name = $"{member.FirstName} {member.LastName}".Trim();
+
+                    // Free-text filter on name / email.
+                    if (!string.IsNullOrWhiteSpace(filterText) &&
+                        name.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) < 0 &&
+                        email.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
+
                     PreviewRecipients.Add(new PreviewRecipient
                     {
                         DisplayName = string.IsNullOrWhiteSpace(name) ? email : $"{name} <{email}>",
                         FirstName = member.FirstName,
                         LastName = member.LastName,
-                        Email = email
+                        Email = email,
+                        IsMember = member.IsMember,
+                        IsChallenger = member.IsChallenger
                     });
                 }
 
                 OnPropertyChanged(nameof(PreviewPositionText));
+                OnPropertyChanged(nameof(FilteredRecipientCount));
+                OnPropertyChanged(nameof(SendToFilteredButtonText));
                 // Reset to the first recipient and refresh the rendered HTML.
                 PreviewIndex = 0;
                 RefreshPreviewHtml();
@@ -996,6 +1052,90 @@ namespace NameParser.UI.ViewModels
             }
         }
 
+        private bool CanSendToFilteredPreview()
+        {
+            return !IsSending
+                && PreviewRecipients.Any(r => !r.IsRawTemplate && !string.IsNullOrWhiteSpace(r.Email))
+                && !string.IsNullOrWhiteSpace(EmailSubject)
+                && !string.IsNullOrWhiteSpace(EmailBody)
+                && !string.IsNullOrWhiteSpace(GmailAddress)
+                && !string.IsNullOrWhiteSpace(GmailAppPassword);
+        }
+
+        /// <summary>
+        /// Sends the email to every recipient currently shown in the filtered preview list
+        /// (honoring the selected type and text filters), resolving each one's VMA block.
+        /// </summary>
+        private async void ExecuteSendToFilteredPreview(object parameter)
+        {
+            var recipients = PreviewRecipients
+                .Where(r => !r.IsRawTemplate && !string.IsNullOrWhiteSpace(r.Email))
+                .ToList();
+
+            if (recipients.Count == 0)
+            {
+                MessageBox.Show("Aucun destinataire ne correspond au filtre sélectionné.",
+                    "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var preview = string.Join("\n", recipients.Take(10).Select(r => r.DisplayName));
+            var result = MessageBox.Show(
+                $"Cet envoi concerne {recipients.Count} destinataire(s) (filtre : {_previewFilterType}).\n\n{preview}" +
+                (recipients.Count > 10 ? $"\n... et {recipients.Count - 10} de plus" : "") +
+                "\n\nVoulez-vous continuer ?",
+                "Confirmer l'envoi",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes) return;
+
+            try
+            {
+                IsSending = true;
+
+                int successCount = 0;
+                int failCount = 0;
+                var errors = new List<string>();
+
+                foreach (var recipient in recipients)
+                {
+                    try
+                    {
+                        StatusMessage = $"Envoi à {recipient.Email}... ({successCount + failCount + 1}/{recipients.Count})";
+                        var vma = SelectVma(recipient.FirstName, recipient.LastName);
+                        await SendEmailAsync(recipient.Email, EmailSubject, BuildBodyForRecipient(vma), recipient.IsChallenger);
+                        successCount++;
+
+                        // Delay to avoid rate limiting.
+                        await System.Threading.Tasks.Task.Delay(5000);
+                    }
+                    catch (Exception ex)
+                    {
+                        failCount++;
+                        errors.Add($"{recipient.Email}: {ex.Message}");
+                    }
+                }
+
+                StatusMessage = $"✅ Envoi terminé : {successCount} réussi(s), {failCount} échec(s).";
+                var summary = $"Envoi terminé.\n\nRéussis : {successCount}\nÉchecs : {failCount}";
+                if (errors.Any())
+                    summary += "\n\nErreurs :\n" + string.Join("\n", errors.Take(10));
+                MessageBox.Show(summary, "Résultat de l'envoi", MessageBoxButton.OK,
+                    failCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ Erreur d'envoi : {ex.Message}";
+                MessageBox.Show($"Erreur d'envoi :\n\n{ex.Message}",
+                    "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                IsSending = false;
+            }
+        }
+
         /// <summary>
         /// Lightweight view item for a saved email template shown in the templates list.
         /// </summary>
@@ -1017,6 +1157,8 @@ namespace NameParser.UI.ViewModels
             public string FirstName { get; set; }
             public string LastName { get; set; }
             public string Email { get; set; }
+            public bool IsMember { get; set; }
+            public bool IsChallenger { get; set; }
         }
 
         /// <summary>

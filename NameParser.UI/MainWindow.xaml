@@ -1424,7 +1424,26 @@
 
                     <!-- Recipient navigation (mail-merge) -->
                     <Border Grid.Row="1" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,10">
-                        <Grid>
+                        <StackPanel>
+                            <!-- Filters -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="🔎 Filtre :" VerticalAlignment="Center" FontWeight="Bold"/>
+                                <ComboBox Width="140" Margin="8,0,0,0"
+                                          ItemsSource="{Binding PreviewFilterTypes}"
+                                          SelectedItem="{Binding PreviewFilterType}"
+                                          ToolTip="Filtrer les destinataires par type"/>
+                                <TextBox Width="220" Margin="8,0,0,0"
+                                         Text="{Binding PreviewFilterText, UpdateSourceTrigger=PropertyChanged, Delay=300}"
+                                         ToolTip="Filtrer par nom ou email"/>
+                                <TextBlock Text="{Binding PreviewPositionText}" VerticalAlignment="Center"
+                                           Margin="12,0,0,0" Foreground="#555"/>
+                                <Button Content="{Binding SendToFilteredButtonText}"
+                                        Command="{Binding SendToFilteredPreviewCommand}"
+                                        Background="#4CAF50" Foreground="White" FontWeight="Bold"
+                                        MinWidth="260" Margin="12,0,0,0"
+                                        ToolTip="Envoie le mail personnalisé à tous les destinataires affichés (filtre appliqué)"/>
+                            </StackPanel>
+                            <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -1452,6 +1471,7 @@
                                 <TextBlock Text="Envoi..." VerticalAlignment="Center" FontStyle="Italic"/>
                             </StackPanel>
                         </Grid>
+                        </StackPanel>
                     </Border>
 
                     <!-- Preview WebView2 -->

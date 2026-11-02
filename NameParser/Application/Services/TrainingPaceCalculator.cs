@@ -18,15 +18,16 @@ namespace NameParser.Application.Services
 	{
 		private static readonly CultureInfo FrCulture = CultureInfo.GetCultureInfo("fr-FR");
 
-		// Capture un pourcentage simple ou une plage, suivi (éventuellement d'espaces) de "VMA".
-		// Exemples: "95% VMA", "90-95% VMA", "80%VMA", "90 à 95% VMA".
+		// Capture un pourcentage simple ou une plage, suivi (éventuellement) de "VMA".
+		// Exemples: "95% VMA", "90-95% VMA", "80%VMA", "90 à 95% VMA",
+		// mais aussi sans le suffixe : "90%", "90-95%", "90 à 95%".
 		// Tolère les espaces HTML (&nbsp;) et les tirets Unicode (–, —) que l'éditeur WYSIWYG insère.
 		private const string Ws = @"(?:\s|&nbsp;|\u00A0)*";
 		private const string Dash = @"(?:-|–|—|à)";
 		private static readonly Regex PercentVmaRegex = new Regex(
 			@"(?<low>\d+(?:[.,]\d+)?)" + Ws +
 			@"(?:" + Dash + Ws + @"(?<high>\d+(?:[.,]\d+)?)" + Ws + @")?" +
-			@"%" + Ws + @"VMA",
+			@"%" + @"(?:" + Ws + @"VMA)?",
 			RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
 		/// <summary>
