@@ -321,6 +321,57 @@ namespace NameParser.Infrastructure.Repositories
 			return $"{(firstName ?? string.Empty).NormalizeForComparison()}|{(lastName ?? string.Empty).NormalizeForComparison()}";
 		}
 
+		/// <summary>
+		/// Returns, per member, the latest VMA preferring a measured (non-extrapolated)
+		/// value and falling back to the latest extrapolated one. Intended to build
+		/// training groups of athletes with a similar VMA.
+		/// </summary>
+		public List<MemberVmaInfo> GetLatestVmasPreferMeasured()
+		{
+			using var context = new RaceManagementContext();
+
+			var rows = context.Members
+				.AsNoTracking()
+				.Select(m => new
+				{
+					m.FirstName,
+					m.LastName,
+					m.Email,
+					Measured = m.VmaHistory
+						.Where(h => !h.IsExtrapolated)
+						.OrderByDescending(h => h.RecordedDate)
+						.ThenByDescending(h => h.Id)
+						.Select(h => (double?)h.Vma)
+						.FirstOrDefault(),
+					Extrapolated = m.VmaHistory
+						.Where(h => h.IsExtrapolated)
+						.OrderByDescending(h => h.RecordedDate)
+						.ThenByDescending(h => h.Id)
+						.Select(h => (double?)h.Vma)
+						.FirstOrDefault()
+				})
+				.ToList();
+
+			var result = new List<MemberVmaInfo>(rows.Count);
+			foreach (var row in rows)
+			{
+				var vma = row.Measured ?? row.Extrapolated;
+				if (!vma.HasValue || vma.Value <= 0)
+					continue;
+
+				result.Add(new MemberVmaInfo
+				{
+					FirstName = row.FirstName,
+					LastName = row.LastName,
+					Email = row.Email,
+					Vma = vma.Value,
+					IsExtrapolated = !row.Measured.HasValue
+				});
+			}
+
+			return result;
+		}
+
 		private static Member ToDomain(MemberEntity entity)
 		{
 			var latestVma = entity.VmaHistory?

@@ -115,29 +115,18 @@ namespace NameParser.Application.Services
 				: $"{vmaLabel} : {FormatVma(vmaValue)} km/h";
 
 			var sb = new StringBuilder();
-			sb.Append("<table style='border-collapse: collapse; margin: 12px 0; width: 100%; max-width: 560px; font-family: Arial, sans-serif; font-size: 13px;'>");
-			sb.Append($"<caption style='caption-side: top; text-align: left; font-weight: bold; color: #3949AB; padding: 4px 0;'>🎯 Tes allures — {caption}</caption>");
-			sb.Append("<tr style='background-color: #3949AB; color: white;'>");
-			sb.Append("<th style='padding: 8px; border: 1px solid #ccc; text-align: left;'>% VMA</th>");
-			sb.Append("<th style='padding: 8px; border: 1px solid #ccc; text-align: left;'>Allure / km</th>");
-			sb.Append("<th style='padding: 8px; border: 1px solid #ccc; text-align: left;'>Allure / 100m</th>");
-			sb.Append("<th style='padding: 8px; border: 1px solid #ccc; text-align: left;'>Vitesse</th>");
-			sb.Append("</tr>");
+			sb.Append("<div style='margin: 12px 0; max-width: 560px; font-family: Arial, sans-serif; font-size: 13px;'>");
+			sb.Append($"<div style='font-weight: bold; color: #3949AB; margin-bottom: 8px;'>🎯 Tes allures — {caption}</div>");
 
-			bool alt = false;
 			foreach (var percent in percents)
 			{
-				var rowBg = alt ? "#EEF0FB" : "#FFFFFF";
-				alt = !alt;
-				sb.Append($"<tr style='background-color: {rowBg};'>");
-				sb.Append($"<td style='padding: 8px; border: 1px solid #ccc; font-weight: bold;'>{FormatPercent(percent)}%</td>");
-				sb.Append($"<td style='padding: 8px; border: 1px solid #ccc;'>{FormatPacePerKm(vmaValue, percent)}</td>");
-				sb.Append($"<td style='padding: 8px; border: 1px solid #ccc;'>{FormatPacePer100m(vmaValue, percent)}</td>");
-				sb.Append($"<td style='padding: 8px; border: 1px solid #ccc;'>{FormatSpeed(vmaValue, percent)} km/h</td>");
-				sb.Append("</tr>");
+				sb.Append("<div style='padding: 7px 10px; margin-bottom: 6px; border-left: 4px solid #3949AB; background: #EEF0FB; border-radius: 4px;'>");
+				sb.Append($"<span style='display: inline-block; min-width: 56px; font-weight: bold; color: #3949AB;'>{FormatPercent(percent)}%</span>");
+				sb.Append($"<span style='color: #333;'>{FormatPacePerKm(vmaValue, percent)} /km · {FormatPacePer100m(vmaValue, percent)} /100m · {FormatSpeed(vmaValue, percent)} km/h</span>");
+				sb.Append("</div>");
 			}
 
-			sb.Append("</table>");
+			sb.Append("</div>");
 			return sb.ToString();
 		}
 

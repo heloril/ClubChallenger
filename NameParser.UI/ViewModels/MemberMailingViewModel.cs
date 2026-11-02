@@ -8,6 +8,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Input;
 using Microsoft.Extensions.Configuration;
+using NameParser.Domain.Entities;
 using NameParser.Infrastructure.Data.Models;
 using NameParser.Infrastructure.Data;
 using NameParser.Infrastructure.Repositories;
@@ -329,7 +330,9 @@ namespace NameParser.UI.ViewModels
             sb.AppendLine("</div>");
             sb.AppendLine("<div style='margin-left: 40px;'>");
             sb.AppendLine("<p style='margin: 5px 0; color: #555;'><strong>Lieu :</strong> Rendez-vous à la piste</p>");
-            sb.AppendLine("<p style='margin: 5px 0; color: #555; font-style: bold;'><strong>Proposition d'entraînement : [Programme à définir]</strong></p>");
+            sb.AppendLine("<div style='margin: 10px 0; padding: 12px 14px; background: #FFF3E0; border-left: 4px solid #FB8C00; border-radius: 6px;'>");
+            sb.AppendLine("<div style='font-size: 15px; font-weight: bold; color: #333;'>🏋️ Proposition d'entraînement : [Programme à définir]</div>");
+            sb.AppendLine("</div>");
             sb.AppendLine(PaceTablePlaceholder);
             sb.AppendLine("</div>");
             sb.AppendLine("</div>");
@@ -347,7 +350,9 @@ namespace NameParser.UI.ViewModels
             sb.AppendLine("<li>17h00 à la barrière du bois de la Vecquée</li>");
             sb.AppendLine("</ul>");
             sb.AppendLine("<p style='margin: 5px 0; color: #555;'><strong>Activité :</strong> Entraînements accompagnés de 8 à 13 km dans les bois environnants</p>");
-            sb.AppendLine("<p style='margin: 5px 0; color: #555; font-style: bold;'><strong>Proposition d'entraînement : [Programme à définir]</strong></p>");
+            sb.AppendLine("<div style='margin: 10px 0; padding: 12px 14px; background: #E8F5E9; border-left: 4px solid #43A047; border-radius: 6px;'>");
+            sb.AppendLine("<div style='font-size: 15px; font-weight: bold; color: #333;'>🏋️ Proposition d'entraînement : [Programme à définir]</div>");
+            sb.AppendLine("</div>");
             sb.AppendLine(PaceTablePlaceholder);
             sb.AppendLine("</div>");
             sb.AppendLine("</div>");
@@ -356,6 +361,9 @@ namespace NameParser.UI.ViewModels
 
             // Placeholder for the per-recipient VMA block (resolved in BuildBodyForRecipient).
             sb.AppendLine(VmaBlockPlaceholder);
+
+            // Placeholder for the per-recipient training-partners block (athletes with a close VMA).
+            sb.AppendLine(PartnersBlockPlaceholder);
 
             // Results of the week
             sb.AppendLine("<h2 style='color: #4CAF50;'>🏆 Résultats de la Semaine Précédente</h2>");
@@ -1007,6 +1015,18 @@ namespace NameParser.UI.ViewModels
         private const string PaceTablePlaceholder = "<!--PACE_TABLE-->";
 
         /// <summary>
+        /// Marker inserted after the VMA block; replaced per recipient by a list of up to
+        /// three athletes whose VMA is the closest, to form training groups.
+        /// </summary>
+        private const string PartnersBlockPlaceholder = "<!--PARTNERS_BLOCK-->";
+
+        /// <summary>
+        /// Cached roster of members with their reference VMA (tested first, then
+        /// extrapolated), used to suggest training partners with a close VMA.
+        /// </summary>
+        private List<MemberVmaInfo> _vmaRoster;
+
+        /// <summary>
         /// Resolves the email body for a recipient: injects the dedicated VMA block and,
         /// for each day's training programme, a formatted pace table (one row per distinct
         /// "% VMA" of that day) instead of resolving every token inline ("sapin de Noël").
@@ -1018,6 +1038,9 @@ namespace NameParser.UI.ViewModels
 
             // Inject the dedicated VMA block (or remove the placeholder when no data).
             body = body.Replace(VmaBlockPlaceholder, BuildVmaBlock(vma));
+
+            // Inject the training-partners block (athletes with a close VMA).
+            body = body.Replace(PartnersBlockPlaceholder, BuildPartnersBlock(vma));
 
             // Resolve each day's pace table from the programme text that precedes its
             // placeholder (segment between the previous placeholder and this one).
@@ -1081,14 +1104,23 @@ namespace NameParser.UI.ViewModels
 
             var fr = CultureInfo.GetCultureInfo("fr-FR");
 
-            string Format(double? value, DateTime? date)
+            string CardValue(double? value, DateTime? date)
             {
                 if (!value.HasValue)
-                    return "-";
-                var line = $"{value.Value.ToString("0.0", fr)} km/h";
+                    return "<span style='font-size: 22px; font-weight: bold;'>-</span>";
+                var line = $"<span style='font-size: 26px; font-weight: bold;'>{value.Value.ToString("0.0", fr)}</span> <span style='font-size: 13px;'>km/h</span>";
                 if (date.HasValue)
-                    line += $"<br/><span style='font-size: 12px; color: #777;'>le {date.Value.ToString("dd/MM/yyyy", fr)}</span>";
+                    line += $"<br/><span style='font-size: 12px; opacity: 0.85;'>le {date.Value.ToString("dd/MM/yyyy", fr)}</span>";
                 return line;
+            }
+
+            string Card(string title, string value, string background)
+            {
+                return
+                    $"<div style=\"display: inline-block; vertical-align: top; box-sizing: border-box; width: 48%; min-width: 180px; margin: 0 1% 12px 0; padding: 14px 16px; border-radius: 10px; color: #ffffff; background: {background}; font-family: Arial, sans-serif;\">" +
+                    $"<div style='font-size: 13px; text-transform: uppercase; letter-spacing: .5px; opacity: .9; margin-bottom: 6px;'>{title}</div>" +
+                    $"<div>{value}</div>" +
+                    "</div>";
             }
 
             var races = vma.Races != null && vma.Races.Count > 0
@@ -1097,26 +1129,71 @@ namespace NameParser.UI.ViewModels
 
             var sb = new StringBuilder();
             sb.AppendLine("<h2 style='color: #9C27B0;'>⚡ Ta VMA</h2>");
-            sb.AppendLine("<table style='border-collapse: collapse; margin: 15px 0; width: 100%; max-width: 500px; font-family: Arial, sans-serif;'>");
-            sb.AppendLine("<tr style='background-color: #9C27B0; color: white;'>");
-            sb.AppendLine("<th style='padding: 10px; border: 1px solid #ccc; text-align: left;'>VMA Calculée</th>");
-            sb.AppendLine("<th style='padding: 10px; border: 1px solid #ccc; text-align: left;'>VMA extrapolée</th>");
-            sb.AppendLine("</tr>");
-            sb.AppendLine("<tr>");
-            sb.AppendLine($"<td style='padding: 10px; border: 1px solid #ccc;'>{Format(vma.CalculatedVma, vma.CalculatedDate)}</td>");
-            sb.AppendLine($"<td style='padding: 10px; border: 1px solid #ccc;'>{Format(vma.ExtrapolatedVma, vma.ExtrapolatedDate)}</td>");
-            sb.AppendLine("</tr>");
-            sb.AppendLine("<tr>");
-            sb.AppendLine("<td style='padding: 10px; border: 1px solid #ccc;'></td>");
-            sb.AppendLine($"<td style='padding: 10px; border: 1px solid #ccc;'><strong>Courses :</strong> {races}</td>");
-            sb.AppendLine("</tr>");
-            sb.AppendLine("</table>");
+            sb.AppendLine("<div style='margin: 15px 0; max-width: 520px;'>");
+            sb.AppendLine(Card("VMA calculée", CardValue(vma.CalculatedVma, vma.CalculatedDate), "#9C27B0"));
+            sb.AppendLine(Card("VMA extrapolée", CardValue(vma.ExtrapolatedVma, vma.ExtrapolatedDate), "#7E57C2"));
+            sb.AppendLine("</div>");
+            sb.AppendLine($"<p style='margin: 0 0 15px 0; font-family: Arial, sans-serif; font-size: 13px; color: #555;'><strong>Courses :</strong> {races}</p>");
 
             return sb.ToString();
         }
 
         /// <summary>
-        /// Represents the VMA selected for a recipient: the most recent tested VMA when
+        /// Builds the "training partners" block: up to three athletes whose reference VMA
+        /// is the closest to the recipient's, to encourage shared training sessions.
+        /// Returns an empty string when the recipient has no VMA or no close partner.
+        /// </summary>
+        private string BuildPartnersBlock(VmaSelection vma)
+        {
+            if (vma == null || vma.Vma <= 0 ||
+                string.IsNullOrWhiteSpace(vma.FirstName) && string.IsNullOrWhiteSpace(vma.LastName))
+                return string.Empty;
+
+            List<MemberVmaInfo> roster;
+            try
+            {
+                roster = _vmaRoster ??= _databaseMemberRepository.GetLatestVmasPreferMeasured();
+            }
+            catch
+            {
+                return string.Empty;
+            }
+
+            if (roster == null || roster.Count == 0)
+                return string.Empty;
+
+            bool IsSelf(MemberVmaInfo m) =>
+                string.Equals(m.FirstName ?? string.Empty, vma.FirstName ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(m.LastName ?? string.Empty, vma.LastName ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+            var partners = roster
+                .Where(m => m.Vma > 0 && !IsSelf(m))
+                .OrderBy(m => Math.Abs(m.Vma - vma.Vma))
+                .ThenBy(m => m.LastName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(m => m.FirstName, StringComparer.OrdinalIgnoreCase)
+                .Take(5)
+                .ToList();
+
+            if (partners.Count == 0)
+                return string.Empty;
+
+            var fr = CultureInfo.GetCultureInfo("fr-FR");
+
+            var items = partners.Select(p =>
+            {
+                var name = $"{p.FirstName} {p.LastName}".Trim();
+                return $"<strong>{System.Net.WebUtility.HtmlEncode(name)}</strong> ({p.Vma.ToString("0.0", fr)} kmh)";
+            });
+
+            var sb = new StringBuilder();
+            sb.AppendLine(
+                "<p style='margin: 0 0 15px 0; font-family: Arial, sans-serif; font-size: 13px; color: #555;'>" +
+                "<strong style='color: #00897B;'>🤝 Partenaires d'entraînement :</strong> " +
+                string.Join(" ", items) +
+                "</p>");
+
+            return sb.ToString();
+        }
         /// available, otherwise the most recent extrapolated VMA, together with its date.
         /// Also carries the data needed to build the dedicated VMA block (tested VMA,
         /// recent-races extrapolated VMA and the races it is based on).
@@ -1126,6 +1203,11 @@ namespace NameParser.UI.ViewModels
             public double Vma { get; set; }
             public DateTime RecordedDate { get; set; }
             public bool IsExtrapolated { get; set; }
+
+            // Identity of the recipient this selection belongs to (used to build the
+            // training-partners block based on athletes with a close VMA).
+            public string FirstName { get; set; }
+            public string LastName { get; set; }
 
             // Data for the dedicated VMA block.
             public double? CalculatedVma { get; set; }
@@ -1205,6 +1287,8 @@ namespace NameParser.UI.ViewModels
                 Vma = chosen?.Vma ?? 0,
                 RecordedDate = chosen?.RecordedDate ?? DateTime.Now,
                 IsExtrapolated = chosen?.IsExtrapolated ?? false,
+                FirstName = firstName,
+                LastName = lastName,
                 CalculatedVma = blockCalculated,
                 CalculatedDate = blockCalculatedDate,
                 ExtrapolatedVma = blockExtrapolated,
