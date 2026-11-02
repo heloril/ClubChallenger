@@ -1388,6 +1388,9 @@
                         <TextBlock Text="📨 Prévisualisation avant envoi" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
                         <Button Content="🔄 Charger les destinataires" Command="{Binding RefreshPreviewCommand}"
                                 Background="#2196F3" Foreground="White" Margin="20,0,0,0" MinWidth="200"/>
+                        <Button Content="📤 Envoyer à tous les membres" Command="{Binding SendToAllMembersCommand}"
+                                Background="#4CAF50" Foreground="White" FontWeight="Bold" Margin="10,0,0,0" MinWidth="230"
+                                ToolTip="Envoie le mail personnalisé à tous les membres"/>
                     </StackPanel>
 
                     <!-- Recipient navigation (mail-merge) -->

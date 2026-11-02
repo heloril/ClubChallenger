@@ -1131,9 +1131,24 @@ namespace NameParser.UI.ViewModels
             sb.AppendLine("<h2 style='color: #9C27B0;'>⚡ Ta VMA</h2>");
             sb.AppendLine("<div style='margin: 15px 0; max-width: 520px;'>");
             sb.AppendLine(Card("VMA calculée", CardValue(vma.CalculatedVma, vma.CalculatedDate), "#9C27B0"));
-            sb.AppendLine(Card("VMA extrapolée", CardValue(vma.ExtrapolatedVma, vma.ExtrapolatedDate), "#7E57C2"));
+            var extrapolatedTitle = vma.ExtrapolatedVma.HasValue ? "VMA extrapolée *" : "VMA extrapolée";
+            sb.AppendLine(Card(extrapolatedTitle, CardValue(vma.ExtrapolatedVma, vma.ExtrapolatedDate), "#7E57C2"));
             sb.AppendLine("</div>");
-            sb.AppendLine($"<p style='margin: 0 0 15px 0; font-family: Arial, sans-serif; font-size: 13px; color: #555;'><strong>Courses :</strong> {races}</p>");
+            sb.AppendLine($"<p style='margin: 0 0 8px 0; font-family: Arial, sans-serif; font-size: 13px; color: #555;'><strong>Courses :</strong> {races}</p>");
+
+            if (vma.ExtrapolatedVma.HasValue)
+            {
+                sb.AppendLine("<p style='margin: 0 0 4px 0; font-family: Arial, sans-serif; font-size: 11px; color: #999; font-style: italic;'>* VMA extrapolée estimée à partir de tes temps sur les courses récentes.</p>");
+            }
+
+            if (!vma.CalculatedVma.HasValue)
+            {
+                sb.AppendLine("<p style='margin: 0 0 15px 0; font-family: Arial, sans-serif; font-size: 11px; color: #999; font-style: italic;'>💡 Tu n'as pas encore de VMA testée : n'hésite pas à me communiquer ta VMA pour des allures plus précises.</p>");
+            }
+            else
+            {
+                sb.AppendLine("<div style='margin: 0 0 15px 0;'></div>");
+            }
 
             return sb.ToString();
         }
