@@ -1210,6 +1210,35 @@
                                         </WrapPanel>
                                     </StackPanel>
                                 </Border>
+
+                                <!-- Optional communication block -->
+                                <Border BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Margin="5,10,5,0" Padding="8">
+                                    <StackPanel>
+                                        <CheckBox Content="📢 Ajouter un bloc communication"
+                                                  IsChecked="{Binding MemberMailingViewModel.IncludeCommunication}"
+                                                  FontWeight="Bold" Margin="0,0,0,5"/>
+                                        <StackPanel IsEnabled="{Binding MemberMailingViewModel.IncludeCommunication}">
+                                            <WrapPanel Orientation="Horizontal" Margin="0,0,0,5">
+                                                <TextBlock Text="Position :" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                <RadioButton Content="Au-dessus des entraînements" GroupName="CommPos"
+                                                             IsChecked="{Binding MemberMailingViewModel.CommunicationAtTop}"
+                                                             VerticalAlignment="Center" Margin="0,0,15,0"/>
+                                                <RadioButton Content="En-dessous des entraînements" GroupName="CommPos"
+                                                             IsChecked="{Binding MemberMailingViewModel.CommunicationAtTop, Converter={StaticResource InverseBoolConverter}}"
+                                                             VerticalAlignment="Center"/>
+                                            </WrapPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                                                <TextBlock Text="Titre :" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                <TextBox Text="{Binding MemberMailingViewModel.CommunicationTitle, UpdateSourceTrigger=PropertyChanged}"
+                                                         Width="300"/>
+                                            </StackPanel>
+                                            <TextBlock Text="Message :" Margin="0,0,0,2"/>
+                                            <TextBox Text="{Binding MemberMailingViewModel.CommunicationText, UpdateSourceTrigger=PropertyChanged}"
+                                                     AcceptsReturn="True" TextWrapping="Wrap" Height="80"
+                                                     VerticalScrollBarVisibility="Auto" HorizontalAlignment="Stretch"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
 
                             <!-- Challenge Mailing Configuration -->

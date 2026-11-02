@@ -115,14 +115,14 @@ namespace NameParser.Application.Services
 				: $"{vmaLabel} : {FormatVma(vmaValue)} km/h";
 
 			var sb = new StringBuilder();
-			sb.Append("<div style='margin: 12px 0; max-width: 560px; font-family: Arial, sans-serif; font-size: 13px;'>");
-			sb.Append($"<div style='font-weight: bold; color: #3949AB; margin-bottom: 8px;'>🎯 Tes allures — {caption}</div>");
+			sb.Append("<div style='margin: 6px 0 2px 0; font-family: Arial, sans-serif; font-size: 12px;'>");
+			sb.Append($"<div style='color: #3949AB; font-weight: bold; margin-bottom: 3px;'>🎯 Tes allures <span style='font-weight: normal; color: #888;'>· {caption}</span></div>");
 
 			foreach (var percent in percents)
 			{
-				sb.Append("<div style='padding: 7px 10px; margin-bottom: 6px; border-left: 4px solid #3949AB; background: #EEF0FB; border-radius: 4px;'>");
-				sb.Append($"<span style='display: inline-block; min-width: 56px; font-weight: bold; color: #3949AB;'>{FormatPercent(percent)}%</span>");
-				sb.Append($"<span style='color: #333;'>{FormatPacePerKm(vmaValue, percent)} /km · {FormatPacePer100m(vmaValue, percent)} /100m · {FormatSpeed(vmaValue, percent)} km/h</span>");
+				sb.Append("<div style='margin: 1px 0; color: #333;'>");
+				sb.Append($"<span style='display: inline-block; min-width: 42px; font-weight: bold; color: #3949AB;'>{FormatPercent(percent)}%</span>");
+				sb.Append($"<span>{FormatPacePerKm(vmaValue, percent)} /km · {FormatPacePer100m(vmaValue, percent)} /100m · {FormatSpeed(vmaValue, percent)} km/h</span>");
 				sb.Append("</div>");
 			}
 

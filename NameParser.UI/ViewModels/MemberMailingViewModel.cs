@@ -37,6 +37,12 @@ namespace NameParser.UI.ViewModels
         private string _statusMessage;
         private bool _isSending;
 
+        // Optional communication block
+        private bool _includeCommunication;
+        private string _communicationTitle = "📢 Communication";
+        private string _communicationText;
+        private bool _communicationAtTop = true;
+
         // Templates
         private string _templateName;
         private EmailTemplateItem _selectedTemplate;
@@ -111,6 +117,32 @@ namespace NameParser.UI.ViewModels
         {
             get => _emailBody;
             set => SetProperty(ref _emailBody, value);
+        }
+
+        /// <summary>When true, a communication block is inserted around the training blocks.</summary>
+        public bool IncludeCommunication
+        {
+            get => _includeCommunication;
+            set => SetProperty(ref _includeCommunication, value);
+        }
+
+        public string CommunicationTitle
+        {
+            get => _communicationTitle;
+            set => SetProperty(ref _communicationTitle, value);
+        }
+
+        public string CommunicationText
+        {
+            get => _communicationText;
+            set => SetProperty(ref _communicationText, value);
+        }
+
+        /// <summary>True = communication block above the training blocks, false = below.</summary>
+        public bool CommunicationAtTop
+        {
+            get => _communicationAtTop;
+            set => SetProperty(ref _communicationAtTop, value);
         }
 
         public string TestEmailAddress
@@ -318,46 +350,31 @@ namespace NameParser.UI.ViewModels
             sb.AppendLine($"<p style='font-size: 14px; color: #666;'>Semaine du {startOfWeek.ToString("dd MMMM yyyy", culture)} au {endOfWeek.ToString("dd MMMM yyyy", culture)}</p>");
             sb.AppendLine("<hr style='border: 1px solid #FF9800;'/>");
 
-            // Training of the week - with nice formatting
+            // Optional communication block (above the training blocks)
+            if (IncludeCommunication && CommunicationAtTop)
+                sb.AppendLine(BuildCommunicationBlock());
+
+            // Training of the week - simplified cards (less nesting)
             sb.AppendLine("<h2 style='color: #2196F3;'>💪 Entraînements de la Semaine</h2>");
-            sb.AppendLine("<div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 10px; margin: 15px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>");
 
             // Mardi
-            sb.AppendLine("<div style='background-color: rgba(255,255,255,0.95); padding: 15px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid #FF9800;'>");
-            sb.AppendLine("<div style='display: flex; align-items: center; margin-bottom: 8px;'>");
-            sb.AppendLine("<span style='font-size: 24px; margin-right: 12px;'>📅</span>");
-            sb.AppendLine("<strong style='font-size: 16px; color: #FF9800;'>Mardi 17h00</strong>");
-            sb.AppendLine("</div>");
-            sb.AppendLine("<div style='margin-left: 40px;'>");
-            sb.AppendLine("<p style='margin: 5px 0; color: #555;'><strong>Lieu :</strong> Rendez-vous à la piste</p>");
-            sb.AppendLine("<div style='margin: 10px 0; padding: 12px 14px; background: #FFF3E0; border-left: 4px solid #FB8C00; border-radius: 6px;'>");
-            sb.AppendLine("<div style='font-size: 15px; font-weight: bold; color: #333;'>🏋️ Proposition d'entraînement : [Programme à définir]</div>");
-            sb.AppendLine("</div>");
+            sb.AppendLine("<div style='background-color: #FFFFFF; padding: 12px 14px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #FF9800; box-shadow: 0 1px 3px rgba(0,0,0,0.1);'>");
+            sb.AppendLine("<p style='margin: 0 0 4px 0; font-size: 15px; font-weight: bold; color: #FF9800;'>📅 Mardi 17h00 <span style='font-size: 13px; font-weight: normal; color: #777;'>· Rendez-vous à la piste</span></p>");
+            sb.AppendLine("<p style='margin: 4px 0; color: #333; font-size: 14px;'>🏋️ <strong>Proposition d'entraînement :</strong> [Programme à définir]</p>");
             sb.AppendLine(PaceTablePlaceholder);
-            sb.AppendLine("</div>");
             sb.AppendLine("</div>");
 
             // Jeudi
-            sb.AppendLine("<div style='background-color: rgba(255,255,255,0.95); padding: 15px; border-radius: 8px; border-left: 4px solid #4CAF50;'>");
-            sb.AppendLine("<div style='display: flex; align-items: center; margin-bottom: 8px;'>");
-            sb.AppendLine("<span style='font-size: 24px; margin-right: 12px;'>🏃</span>");
-            sb.AppendLine("<strong style='font-size: 16px; color: #4CAF50;'>Jeudi 16h30 - 17h00</strong>");
-            sb.AppendLine("</div>");
-            sb.AppendLine("<div style='margin-left: 40px;'>");
-            sb.AppendLine("<p style='margin: 5px 0; color: #555;'><strong>Départ :</strong></p>");
-            sb.AppendLine("<ul style='margin: 5px 0 5px 20px; color: #555;'>");
-            sb.AppendLine("<li>16h30 au parking de la piste, ou</li>");
-            sb.AppendLine("<li>17h00 à la barrière du bois de la Vecquée</li>");
-            sb.AppendLine("</ul>");
-            sb.AppendLine("<p style='margin: 5px 0; color: #555;'><strong>Activité :</strong> Entraînements accompagnés de 8 à 13 km dans les bois environnants</p>");
-            sb.AppendLine("<div style='margin: 10px 0; padding: 12px 14px; background: #E8F5E9; border-left: 4px solid #43A047; border-radius: 6px;'>");
-            sb.AppendLine("<div style='font-size: 15px; font-weight: bold; color: #333;'>🏋️ Proposition d'entraînement : [Programme à définir]</div>");
-            sb.AppendLine("</div>");
+            sb.AppendLine("<div style='background-color: #FFFFFF; padding: 12px 14px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #4CAF50; box-shadow: 0 1px 3px rgba(0,0,0,0.1);'>");
+            sb.AppendLine("<p style='margin: 0 0 4px 0; font-size: 15px; font-weight: bold; color: #4CAF50;'>🏃 Jeudi 16h30 - 17h00</p>");
+            sb.AppendLine("<p style='margin: 4px 0; color: #777; font-size: 13px;'>Départ : 16h30 au parking de la piste, ou 17h00 à la barrière du bois de la Vecquée · 8 à 13 km dans les bois.</p>");
+            sb.AppendLine("<p style='margin: 4px 0; color: #333; font-size: 14px;'>🏋️ <strong>Proposition d'entraînement :</strong> [Programme à définir]</p>");
             sb.AppendLine(PaceTablePlaceholder);
             sb.AppendLine("</div>");
-            sb.AppendLine("</div>");
 
-            sb.AppendLine("</div>");
+            // Optional communication block (below the training blocks)
+            if (IncludeCommunication && !CommunicationAtTop)
+                sb.AppendLine(BuildCommunicationBlock());
 
             // Placeholder for the per-recipient VMA block (resolved in BuildBodyForRecipient).
             sb.AppendLine(VmaBlockPlaceholder);
@@ -1088,6 +1105,25 @@ namespace NameParser.UI.ViewModels
                 searchStart = next;
             }
 
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Builds an optional communication block (title + free text) inserted above or
+        /// below the training blocks depending on the configuration.
+        /// </summary>
+        private string BuildCommunicationBlock()
+        {
+            var title = string.IsNullOrWhiteSpace(CommunicationTitle) ? "📢 Communication" : CommunicationTitle.Trim();
+            var text = string.IsNullOrWhiteSpace(CommunicationText)
+                ? "[Message à définir]"
+                : CommunicationText.Trim().Replace("\r\n", "<br/>").Replace("\n", "<br/>");
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<div style='background-color: #FFFDE7; padding: 15px; border-radius: 8px; margin: 12px 0; border-left: 4px solid #FBC02D;'>");
+            sb.AppendLine($"<p style='margin: 0 0 6px 0; font-size: 16px; font-weight: bold; color: #F9A825;'>{System.Net.WebUtility.HtmlEncode(title)}</p>");
+            sb.AppendLine($"<div style='color: #555; font-size: 14px;'>{text}</div>");
+            sb.AppendLine("</div>");
             return sb.ToString();
         }
 
