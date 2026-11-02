@@ -44,6 +44,24 @@ namespace NameParser.Application.Services
 		}
 
 		/// <summary>
+		/// Same extrapolation as <see cref="ExtrapolateVma"/> (the value shown on the VMA
+		/// screen) but returns the predicted VMA together with the number of races taken
+		/// into account, and without writing a journal entry (read-only, side-effect free).
+		/// </summary>
+		public (double? Vma, int RaceCount) ExtrapolateVmaWithRaceCount(string firstName, string lastName)
+		{
+			var averageSpeeds = GetAverageSpeedByMember();
+			var measuredVmas = _memberRepository.GetLatestMeasuredVmas();
+
+			var prediction = Predict(firstName, lastName, averageSpeeds, measuredVmas);
+
+			var key = DatabaseMemberRepository.NormalizeName(firstName, lastName);
+			var raceCount = averageSpeeds.TryGetValue(key, out var info) ? info.RaceCount : 0;
+
+			return (prediction.Predicted, raceCount);
+		}
+
+		/// <summary>
 		/// Extrapolates the VMA for every member who has more than one exploitable race,
 		/// persisting a new extrapolated VMA record and a journal entry for each.
 		/// Calibration always relies on measured (tested) VMAs only, never on previously
@@ -88,7 +106,7 @@ namespace NameParser.Application.Services
 		/// calibration data is available.
 		/// </summary>
 		public RecentRacesVmaResult ComputeRecentRacesVma(string firstName, string lastName,
-			int maxRaces = 5, int monthsWindow = 3)
+			int maxRaces = 5, int monthsWindow = 3, bool rejectOutliers = false)
 		{
 			var measuredVmas = _memberRepository.GetLatestMeasuredVmas();
 			var averageSpeeds = GetAverageSpeedByMember();
@@ -121,6 +139,7 @@ namespace NameParser.Application.Services
 
 				result.Races.Add(new RecentRaceVmaItem
 				{
+					RaceId = race.RaceId,
 					RaceName = race.RaceName,
 					DistanceKm = race.DistanceKm,
 					RaceDate = race.RaceDate,
@@ -138,9 +157,46 @@ namespace NameParser.Application.Services
 				return result;
 			}
 
+			if (rejectOutliers)
+			{
+				var kept = RejectOutliersAroundMedian(estimates, 0.15);
+				var excluded = estimates.Count - kept.Count;
+				result.AverageVma = Math.Round(kept.Average(), 1);
+				result.Details = excluded > 0
+					? $"VMA moyenne tout temps sur {kept.Count} course(s) (±15 % autour de la médiane, {excluded} écartée(s))."
+					: $"VMA moyenne tout temps sur {kept.Count} course(s) (±15 % autour de la médiane).";
+				return result;
+			}
+
 			result.AverageVma = Math.Round(estimates.Average(), 1);
 			result.Details = $"VMA moyenne estimée sur {estimates.Count} course(s) récente(s) (≤ {maxRaces}, {monthsWindow} derniers mois).";
 			return result;
+		}
+
+		/// <summary>
+		/// Garde uniquement les valeurs à ±<paramref name="tolerance"/> (fraction, 0.15 = ±15 %)
+		/// autour de la médiane, en écartant les outliers. Repli sur l'ensemble complet quand
+		/// il y a 2 valeurs ou moins, ou si le filtrage retirerait tout.
+		/// </summary>
+		private static List<double> RejectOutliersAroundMedian(List<double> values, double tolerance)
+		{
+			if (values == null || values.Count <= 2)
+				return values ?? new List<double>();
+
+			var sorted = values.OrderBy(v => v).ToList();
+			var mid = sorted.Count / 2;
+			var median = sorted.Count % 2 != 0
+				? sorted[mid]
+				: (sorted[mid - 1] + sorted[mid]) / 2.0;
+
+			if (median <= 0)
+				return values;
+
+			var lower = median * (1.0 - tolerance);
+			var upper = median * (1.0 + tolerance);
+
+			var kept = values.Where(v => v >= lower && v <= upper).ToList();
+			return kept.Count > 0 ? kept : values;
 		}
 
 		/// <summary>
@@ -208,6 +264,7 @@ namespace NameParser.Application.Services
 					c.MemberLastName,
 					c.Speed,
 					c.RaceTime,
+					c.RaceId,
 					RaceName = c.Race.Name,
 					DistanceKm = (int?)c.Race.DistanceKm,
 					EventDate = (DateTime?)c.Race.RaceEvent.EventDate,
@@ -239,6 +296,7 @@ namespace NameParser.Application.Services
 
 				races.Add(new RecentRaceRow
 				{
+					RaceId = row.RaceId,
 					RaceName = row.RaceName,
 					DistanceKm = row.DistanceKm,
 					RaceDate = raceDate,
@@ -246,7 +304,11 @@ namespace NameParser.Application.Services
 				});
 			}
 
+			// Deduplicate by race: keep a single (fastest) line per race so a member
+			// encoded twice on the same race is not counted twice.
 			return races
+				.GroupBy(r => r.RaceId ?? -r.GetHashCode())
+				.Select(g => g.OrderByDescending(r => r.Speed).First())
 				.OrderByDescending(r => r.RaceDate)
 				.Take(maxRaces)
 				.ToList();
@@ -340,6 +402,113 @@ namespace NameParser.Application.Services
 			return count;
 		}
 
+		// Large window used to consider every race a member ever ran ("tout temps").
+		private const int AllTimeMaxRaces = 10000;
+		private const int AllTimeMonthsWindow = 12000;
+
+		/// <summary>
+		/// Read-only (no persistence) computation of the member's VMA over their 5 most
+		/// recent races within the last 3 months.
+		/// </summary>
+		public RecentRacesVmaResult ComputeRecentRacesVmaReadOnly(string firstName, string lastName)
+		{
+			return ComputeRecentRacesVma(firstName, lastName, 5, 3, rejectOutliers: false);
+		}
+
+		/// <summary>
+		/// Read-only (no persistence) computation of the member's all-time VMA (every race,
+		/// deduplicated), excluding races more than ±15 % away from the median.
+		/// </summary>
+		public RecentRacesVmaResult ComputeAllTimeRacesVmaReadOnly(string firstName, string lastName)
+		{
+			return ComputeRecentRacesVma(firstName, lastName, AllTimeMaxRaces, AllTimeMonthsWindow, rejectOutliers: true);
+		}
+
+		/// <summary>
+		/// Recomputes and persists the all-time (every race) VMA log for one member,
+		/// deduplicated by race reference. The average excludes races whose estimated
+		/// VMA is more than ±15 % away from the median.
+		/// </summary>
+		public RecentRacesVmaResult RecomputeAndSaveAllTimeRacesVma(string firstName, string lastName)
+		{
+			var result = ComputeRecentRacesVma(firstName, lastName, AllTimeMaxRaces, AllTimeMonthsWindow, rejectOutliers: true);
+			SaveRecentRacesVma(result);
+			return result;
+		}
+
+		/// <summary>
+		/// Recomputes and persists the all-time VMA log (based on every race ever run,
+		/// deduplicated by race) for every member. Returns the number of members with a
+		/// successful estimate. Logs that are not tested (manual) VMAs are cleaned up first.
+		/// </summary>
+		public int RecomputeAllTimeRacesVma()
+		{
+			CleanupComputedVmaData();
+
+			var count = 0;
+			foreach (var member in _memberRepository.GetAll())
+			{
+				var result = RecomputeAndSaveAllTimeRacesVma(member.FirstName, member.LastName);
+				if (result != null && result.IsSuccess)
+					count++;
+			}
+			return count;
+		}
+
+		/// <summary>
+		/// Recomputes and persists the all-time VMA log only for the specified members.
+		/// Used to keep VMA values up to date whenever a race is loaded/processed.
+		/// Names are matched after normalization to avoid recomputing the same member twice.
+		/// </summary>
+		public int RecomputeAllTimeRacesVmaForMembers(IEnumerable<(string FirstName, string LastName)> members)
+		{
+			if (members == null)
+				return 0;
+
+			var seen = new HashSet<string>(StringComparer.Ordinal);
+			var count = 0;
+
+			foreach (var (firstName, lastName) in members)
+			{
+				var key = DatabaseMemberRepository.NormalizeName(firstName, lastName);
+				if (string.IsNullOrEmpty(key) || !seen.Add(key))
+					continue;
+
+				var result = RecomputeAndSaveAllTimeRacesVma(firstName, lastName);
+				if (result != null && result.IsSuccess)
+					count++;
+			}
+
+			return count;
+		}
+
+		/// <summary>
+		/// Purges every computed/derived VMA artefact from the database, keeping only the
+		/// tested (manually encoded) VMA history entries. This includes the extrapolated
+		/// VMA history rows, the extrapolation journal and the recent/all-time race VMA logs.
+		/// Called before a full all-time recompute so the stored data only reflects the
+		/// latest calculation.
+		/// </summary>
+		public void CleanupComputedVmaData()
+		{
+			try
+			{
+				using var context = new RaceManagementContext();
+
+				var extrapolatedHistory = context.MemberVmaHistories.Where(h => h.IsExtrapolated);
+				context.MemberVmaHistories.RemoveRange(extrapolatedHistory);
+
+				context.VmaExtrapolationLogs.RemoveRange(context.VmaExtrapolationLogs);
+				context.RecentRaceVmaLogs.RemoveRange(context.RecentRaceVmaLogs);
+
+				context.SaveChanges();
+			}
+			catch
+			{
+				// Cleanup must never break the recompute flow.
+			}
+		}
+
 		private void SaveRecentRacesVma(RecentRacesVmaResult result)
 		{
 			if (result == null)
@@ -362,6 +531,7 @@ namespace NameParser.Application.Services
 				{
 					entity.Lines.Add(new RecentRaceVmaLineEntity
 					{
+						RaceId = race.RaceId,
 						RaceName = race.RaceName,
 						DistanceKm = race.DistanceKm,
 						RaceDate = race.RaceDate,
@@ -380,6 +550,7 @@ namespace NameParser.Application.Services
 
 		private sealed class RecentRaceRow
 		{
+			public int? RaceId { get; set; }
 			public string RaceName { get; set; }
 			public int? DistanceKm { get; set; }
 			public DateTime RaceDate { get; set; }

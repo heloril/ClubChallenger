@@ -35,6 +35,7 @@ namespace NameParser.UI.ViewModels
         private readonly ClassificationRepository _classificationRepository;
         private readonly RaceEventRepository _raceEventRepository;
         private readonly ChallengeRepository _challengeRepository;
+        private readonly VmaExtrapolationService _vmaExtrapolationService;
         private readonly FacebookService _facebookService;
         private string _selectedFilePath;
         private string _raceName;
@@ -66,6 +67,8 @@ namespace NameParser.UI.ViewModels
             _classificationRepository = new ClassificationRepository();
             _raceEventRepository = new RaceEventRepository();
             _challengeRepository = new ChallengeRepository();
+            _vmaExtrapolationService = new VmaExtrapolationService(new DatabaseMemberRepository());
+
 
             // Initialize Facebook Service
             var fbSettings = new FacebookSettings
@@ -160,6 +163,31 @@ namespace NameParser.UI.ViewModels
             LoadRaces();
             LoadRaceEventsForSelection();
             LoadChallengesForClassification();
+        }
+
+        /// <summary>
+        /// Recomputes and persists the all-time VMA (every race, deduplicated by race)
+        /// for every member that appears in the given classification. Called after a race
+        /// is loaded/processed so VMA values evolve with each new encode. Failures are
+        /// swallowed to avoid blocking the race-save flow.
+        /// </summary>
+        private void RecomputeVmaForClassification(NameParser.Domain.Aggregates.Classification classification)
+        {
+            if (classification == null)
+                return;
+
+            try
+            {
+                var members = classification.GetAllClassifications()
+                    .Where(c => c.Member != null)
+                    .Select(c => (c.Member.FirstName, c.Member.LastName));
+
+                _vmaExtrapolationService.RecomputeAllTimeRacesVmaForMembers(members);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"VMA recompute after race encode failed: {ex.Message}");
+            }
         }
 
         public ObservableCollection<int> Years { get; }
@@ -556,6 +584,7 @@ namespace NameParser.UI.ViewModels
                     {
                         _classificationRepository.SaveClassifications(savedRace.Id, classification);
                         _raceRepository.UpdateRaceStatus(savedRace.Id, "Processed");
+                        RecomputeVmaForClassification(classification);
                     }
                 });
 
@@ -760,6 +789,7 @@ namespace NameParser.UI.ViewModels
 
                                 // Update race status
                                 _raceRepository.UpdateRaceStatus(race.Id, "Processed");
+                                RecomputeVmaForClassification(classification);
                             }
                             finally
                             {
@@ -2981,6 +3011,7 @@ namespace NameParser.UI.ViewModels
                             {
                                 _classificationRepository.SaveClassifications(savedRace.Id, classification);
                                 _raceRepository.UpdateRaceStatus(savedRace.Id, "Processed");
+                                RecomputeVmaForClassification(classification);
                             }
                         });
 

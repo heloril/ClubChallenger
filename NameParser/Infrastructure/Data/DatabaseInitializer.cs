@@ -457,6 +457,7 @@ namespace NameParser.Infrastructure.Data
                             CREATE TABLE [dbo].[RecentRaceVmaLines] (
                                 [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
                                 [RecentRaceVmaLogId] INT NOT NULL,
+                                [RaceId] INT NULL,
                                 [RaceName] NVARCHAR(300) NULL,
                                 [DistanceKm] INT NULL,
                                 [RaceDate] DATETIME2(7) NULL,
@@ -468,6 +469,20 @@ namespace NameParser.Infrastructure.Data
                             CREATE NONCLUSTERED INDEX [IX_RecentRaceVmaLines_RecentRaceVmaLogId]
                                 ON [dbo].[RecentRaceVmaLines] ([RecentRaceVmaLogId] ASC);
                             PRINT 'RecentRaceVmaLines table created';
+                        END";
+                    command.ExecuteNonQuery();
+
+                    // Add RaceId column to RecentRaceVmaLines for existing databases
+                    command.CommandText = @"
+                        IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[RecentRaceVmaLines]') AND type in (N'U'))
+                        AND NOT EXISTS (
+                            SELECT * FROM sys.columns
+                            WHERE object_id = OBJECT_ID(N'[dbo].[RecentRaceVmaLines]')
+                            AND name = 'RaceId'
+                        )
+                        BEGIN
+                            ALTER TABLE [dbo].[RecentRaceVmaLines] ADD [RaceId] INT NULL;
+                            PRINT 'RaceId column added to RecentRaceVmaLines';
                         END";
                     command.ExecuteNonQuery();
 

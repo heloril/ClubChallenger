@@ -26,6 +26,7 @@ namespace NameParser.UI.ViewModels
         private readonly JsonMemberRepository _memberRepository;
         private readonly DatabaseMemberRepository _databaseMemberRepository;
         private readonly RecentRaceVmaRepository _recentRaceVmaRepository;
+        private readonly NameParser.Application.Services.VmaExtrapolationService _vmaExtrapolationService;
         private readonly EmailTemplateRepository _emailTemplateRepository;
         private readonly IConfiguration _configuration;
         private readonly LocalizationService _localization;
@@ -67,6 +68,7 @@ namespace NameParser.UI.ViewModels
             _memberRepository = new JsonMemberRepository();
             _databaseMemberRepository = new DatabaseMemberRepository();
             _recentRaceVmaRepository = new RecentRaceVmaRepository();
+            _vmaExtrapolationService = new NameParser.Application.Services.VmaExtrapolationService(_databaseMemberRepository);
             _emailTemplateRepository = new EmailTemplateRepository();
             _localization = LocalizationService.Instance;
 
@@ -1277,7 +1279,7 @@ namespace NameParser.UI.ViewModels
         /// </summary>
         private static string BuildVmaBlock(VmaSelection vma)
         {
-            if (vma == null || (!vma.CalculatedVma.HasValue && !vma.ExtrapolatedVma.HasValue))
+            if (vma == null || (!vma.CalculatedVma.HasValue && !vma.ExtrapolatedVma.HasValue && !vma.AllTimeExtrapolatedVma.HasValue))
                 return string.Empty;
 
             var fr = CultureInfo.GetCultureInfo("fr-FR");
@@ -1309,14 +1311,24 @@ namespace NameParser.UI.ViewModels
             sb.AppendLine("<h2 style='color: #9C27B0;'>⚡ Ta VMA</h2>");
             sb.AppendLine("<div style='margin: 15px 0; max-width: 520px;'>");
             sb.AppendLine(Card("VMA calculée", CardValue(vma.CalculatedVma, vma.CalculatedDate), "#9C27B0"));
-            var extrapolatedTitle = vma.ExtrapolatedVma.HasValue ? "VMA extrapolée *" : "VMA extrapolée";
+            var extrapolatedTitle = vma.ExtrapolatedVma.HasValue ? "VMA extrapolée (récente) *" : "VMA extrapolée (récente)";
             sb.AppendLine(Card(extrapolatedTitle, CardValue(vma.ExtrapolatedVma, vma.ExtrapolatedDate), "#7E57C2"));
+            if (vma.AllTimeExtrapolatedVma.HasValue)
+            {
+                var allTimeSub = vma.AllTimeRaceCount > 0
+                    ? $"sur {vma.AllTimeRaceCount} course(s)"
+                    : null;
+                var allTimeValue = $"<span style='font-size: 26px; font-weight: bold;'>{vma.AllTimeExtrapolatedVma.Value.ToString("0.0", fr)}</span> <span style='font-size: 13px;'>km/h</span>";
+                if (allTimeSub != null)
+                    allTimeValue += $"<br/><span style='font-size: 12px; opacity: 0.85;'>{allTimeSub}</span>";
+                sb.AppendLine(Card("VMA extrapolée (tout temps) *", allTimeValue, "#5E35B1"));
+            }
             sb.AppendLine("</div>");
             sb.AppendLine($"<p style='margin: 0 0 8px 0; font-family: Arial, sans-serif; font-size: 13px; color: #555;'><strong>Courses :</strong> {races}</p>");
 
-            if (vma.ExtrapolatedVma.HasValue)
+            if (vma.ExtrapolatedVma.HasValue || vma.AllTimeExtrapolatedVma.HasValue)
             {
-                sb.AppendLine("<p style='margin: 0 0 4px 0; font-family: Arial, sans-serif; font-size: 11px; color: #999; font-style: italic;'>* VMA extrapolée estimée à partir de tes temps sur les courses récentes.</p>");
+                sb.AppendLine("<p style='margin: 0 0 4px 0; font-family: Arial, sans-serif; font-size: 11px; color: #999; font-style: italic;'>* VMA extrapolée estimée à partir de tes temps de course : « récente » sur tes courses des 3 derniers mois, « tout temps » sur l'ensemble de tes courses.</p>");
             }
 
             if (!vma.CalculatedVma.HasValue)
@@ -1407,6 +1419,10 @@ namespace NameParser.UI.ViewModels
             public DateTime? CalculatedDate { get; set; }
             public double? ExtrapolatedVma { get; set; }
             public DateTime? ExtrapolatedDate { get; set; }
+            // Extrapolated VMA computed over all the member's races (not only the recent ones),
+            // to stay consistent with the "all-time" VMA history shown elsewhere.
+            public double? AllTimeExtrapolatedVma { get; set; }
+            public int AllTimeRaceCount { get; set; }
             public List<string> Races { get; set; } = new List<string>();
         }
 
@@ -1469,23 +1485,67 @@ namespace NameParser.UI.ViewModels
             double? blockCalculated = tested != null && tested.Vma > 0 ? (double?)tested.Vma : null;
             DateTime? blockCalculatedDate = tested != null && tested.Vma > 0 ? (DateTime?)tested.RecordedDate : null;
 
-            // The reference VMA used to resolve "% VMA" paces: tested first, then extrapolated.
-            var chosen = tested ?? extrapolated;
+            // All-time extrapolated VMA: same estimation used by the VMA screen
+            // (regression on the member's best average race speed over all races), so the
+            // value shown here matches the VMA history. We also expose the race count.
+            double? allTimeExtrapolated = null;
+            int allTimeRaceCount = 0;
+            try
+            {
+                var (allTimeVma, raceCount) = _vmaExtrapolationService.ExtrapolateVmaWithRaceCount(firstName, lastName);
+                if (allTimeVma.HasValue && allTimeVma.Value > 0)
+                {
+                    allTimeExtrapolated = allTimeVma.Value;
+                    allTimeRaceCount = raceCount;
+                }
+            }
+            catch
+            {
+                // Classification/race tables may be unavailable; ignore the all-time estimate.
+            }
 
-            if (chosen == null && !blockCalculated.HasValue && !blockExtrapolated.HasValue)
+            // The reference VMA used to resolve "% VMA" paces (mardi/jeudi), per rule:
+            // 1) tested value; 2) else the 3-month recent-races value when it is based on
+            // more than 3 races; 3) else the all-time extrapolated value.
+            double? referenceVma = null;
+            DateTime? referenceDate = null;
+            bool referenceIsExtrapolated = false;
+
+            if (tested != null && tested.Vma > 0)
+            {
+                referenceVma = tested.Vma;
+                referenceDate = tested.RecordedDate;
+                referenceIsExtrapolated = false;
+            }
+            else if (recentRacesVma.HasValue && recentRacesVma.Value > 0 && races.Count > 3)
+            {
+                referenceVma = recentRacesVma.Value;
+                referenceDate = recentRacesDate;
+                referenceIsExtrapolated = true;
+            }
+            else if (allTimeExtrapolated.HasValue && allTimeExtrapolated.Value > 0)
+            {
+                referenceVma = allTimeExtrapolated.Value;
+                referenceDate = null;
+                referenceIsExtrapolated = true;
+            }
+
+            if (!referenceVma.HasValue && !blockCalculated.HasValue && !blockExtrapolated.HasValue)
                 return null;
 
             return new VmaSelection
             {
-                Vma = chosen?.Vma ?? 0,
-                RecordedDate = chosen?.RecordedDate ?? DateTime.Now,
-                IsExtrapolated = chosen?.IsExtrapolated ?? false,
+                Vma = referenceVma ?? 0,
+                RecordedDate = referenceDate ?? DateTime.Now,
+                IsExtrapolated = referenceIsExtrapolated,
                 FirstName = firstName,
                 LastName = lastName,
                 CalculatedVma = blockCalculated,
                 CalculatedDate = blockCalculatedDate,
                 ExtrapolatedVma = blockExtrapolated,
                 ExtrapolatedDate = blockExtrapolatedDate,
+                AllTimeExtrapolatedVma = allTimeExtrapolated,
+                AllTimeRaceCount = allTimeRaceCount,
                 Races = races
             };
         }

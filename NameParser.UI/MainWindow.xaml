@@ -1599,24 +1599,26 @@
                         <!-- Global VMA actions -->
                         <GroupBox Header="Actions VMA globales" Grid.Row="0" Margin="0,0,0,10">
                             <StackPanel Orientation="Horizontal">
-                                <Button Content="📊 Extrapoler toutes les VMA" Command="{Binding ExtrapolateAllVmaCommand}"
+                                <Button Content="🏅 Recalculer VMA toutes les courses" Command="{Binding RecalculateAllTimeRacesVmaCommand}"
                                         Margin="5" Padding="8,3"
-                                        ToolTip="Extrapoler automatiquement la VMA de tous les membres ayant plus d'une course (VMA testées comme références, meilleures 50 % des courses retenues)"/>
-                                <Button Content="🏃 Recalculer VMA 5 dernières courses" Command="{Binding RecalculateRecentRacesVmaCommand}"
-                                        Margin="5" Padding="8,3"
-                                        ToolTip="Recalculer pour tous les membres la VMA estimée sur les 5 dernières courses des 3 derniers mois (log dédié, une VMA par course)"/>
+                                        ToolTip="Recalculer pour tous les membres la VMA moyenne sur toutes leurs courses (une VMA par course, sans doublon, outliers ±15 % exclus). Les anciennes VMA calculées sont nettoyées ; seules les VMA testées (manuelles) sont conservées."/>
                             </StackPanel>
                         </GroupBox>
 
-                        <!-- Member selector -->
+                        <!-- Member selector + search -->
                         <Grid Grid.Row="1" Margin="0,0,0,10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Membre :" Grid.Column="0" VerticalAlignment="Center"/>
-                            <ComboBox Grid.Column="1" ItemsSource="{Binding Members}"
+                            <TextBlock Text="Rechercher :" Grid.Column="0" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     Margin="5" Height="30"
+                                     ToolTip="Filtrer les membres par nom, prénom ou email"/>
+                            <TextBlock Text="Membre :" Grid.Column="2" VerticalAlignment="Center"/>
+                            <ComboBox Grid.Column="3" ItemsSource="{Binding Members}"
                                       SelectedItem="{Binding SelectedMember}"
                                       Margin="5" Height="30">
                                 <ComboBox.ItemTemplate>
@@ -1629,42 +1631,55 @@
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
-                            <Button Content="📈 Extrapoler VMA" Command="{Binding ExtrapolateVmaCommand}" Grid.Column="2"
-                                    Margin="5" Padding="8,2"
-                                    ToolTip="Extrapoler la VMA à partir des temps en course (calibrée sur les VMA testées)"/>
                         </Grid>
 
                         <!-- VMA History & extrapolation journal (merged) -->
                         <GroupBox Header="Historique &amp; extrapolation VMA" Grid.Row="2"
                                   Visibility="{Binding SelectedMember, Converter={StaticResource NullToVisibilityConverter}}">
-                            <DataGrid ItemsSource="{Binding VmaTimeline}"
-                                      AutoGenerateColumns="False" IsReadOnly="True"
-                                      HeadersVisibility="Column" CanUserAddRows="False">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=dd/MM/yyyy HH:mm}" Width="Auto"/>
-                                    <DataGridTextColumn Header="VMA" Binding="{Binding VmaDisplay}" Width="Auto"/>
-                                    <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="Auto"/>
-                                    <DataGridTextColumn Header="Détail" Binding="{Binding Details}" Width="*">
-                                        <DataGridTextColumn.ElementStyle>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="TextWrapping" Value="Wrap"/>
-                                                <Setter Property="ToolTip" Value="{Binding Details}"/>
-                                            </Style>
-                                        </DataGridTextColumn.ElementStyle>
-                                    </DataGridTextColumn>
-                                    <DataGridTemplateColumn Header="" Width="90">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <Button Content="🗑 Suppr."
-                                                        Visibility="{Binding CanDelete, Converter={StaticResource BoolToVisibilityConverter}}"
-                                                        Command="{Binding DataContext.DeleteVmaRecordCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                                        CommandParameter="{Binding}"
-                                                        Padding="4,1" Margin="2"/>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                </DataGrid.Columns>
-                            </DataGrid>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- VMA averages summary -->
+                                <Border Grid.Row="0" Background="#E3F2FD" Padding="10" Margin="0,0,0,8" CornerRadius="4">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="VMA 5 dernières courses (≤ 3 mois) :" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding RecentRacesVmaDisplay}" Margin="5,0,25,0" VerticalAlignment="Center" Foreground="#1565C0" FontWeight="Bold"/>
+                                        <TextBlock Text="VMA moyenne extrapolée (tout temps) :" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding AllTimeVmaDisplay}" Margin="5,0,0,0" VerticalAlignment="Center" Foreground="#2E7D32" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <DataGrid Grid.Row="1" ItemsSource="{Binding VmaTimeline}"
+                                          AutoGenerateColumns="False" IsReadOnly="True"
+                                          HeadersVisibility="Column" CanUserAddRows="False">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="VMA" Binding="{Binding VmaDisplay}" Width="Auto"/>
+                                        <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="Auto"/>
+                                        <DataGridTextColumn Header="Détail" Binding="{Binding Details}" Width="*">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="TextWrapping" Value="Wrap"/>
+                                                    <Setter Property="ToolTip" Value="{Binding Details}"/>
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
+                                        <DataGridTemplateColumn Header="" Width="90">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="🗑 Suppr."
+                                                            Visibility="{Binding CanDelete, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                            Command="{Binding DataContext.DeleteVmaRecordCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                            CommandParameter="{Binding}"
+                                                            Padding="4,1" Margin="2"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
                         </GroupBox>
 
                         <!-- Status -->

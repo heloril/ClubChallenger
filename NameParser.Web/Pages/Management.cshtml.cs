@@ -200,6 +200,20 @@ public class ManagementModel : PageModel
             // Update race status
             _raceRepository.UpdateRaceStatus(savedRace.Id, "Processed");
 
+            // Recompute the all-time VMA (one per race, deduplicated) for the members in this race
+            try
+            {
+                var vmaService = new VmaExtrapolationService(new DatabaseMemberRepository());
+                var members = classification.GetAllClassifications()
+                    .Where(c => c.Member != null)
+                    .Select(c => (c.Member.FirstName, c.Member.LastName));
+                vmaService.RecomputeAllTimeRacesVmaForMembers(members);
+            }
+            catch (Exception vmaEx)
+            {
+                _logger.LogWarning(vmaEx, "VMA recompute after race encode failed.");
+            }
+
             // Clean up uploaded file
             if (System.IO.File.Exists(filePath))
             {

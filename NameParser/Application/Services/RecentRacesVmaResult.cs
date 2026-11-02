@@ -27,6 +27,7 @@ namespace NameParser.Application.Services
 	/// </summary>
 	public class RecentRaceVmaItem
 	{
+		public int? RaceId { get; set; }
 		public string RaceName { get; set; }
 		public int? DistanceKm { get; set; }
 		public DateTime RaceDate { get; set; }

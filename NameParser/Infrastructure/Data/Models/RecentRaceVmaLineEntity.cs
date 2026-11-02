@@ -16,6 +16,12 @@ namespace NameParser.Infrastructure.Data.Models
 
 		public int RecentRaceVmaLogId { get; set; }
 
+		/// <summary>
+		/// Reference to the race (Races.Id) this line was computed from, when known.
+		/// Used to deduplicate lines per race and to recompute the all-time VMA reliably.
+		/// </summary>
+		public int? RaceId { get; set; }
+
 		[MaxLength(300)]
 		public string RaceName { get; set; }
 

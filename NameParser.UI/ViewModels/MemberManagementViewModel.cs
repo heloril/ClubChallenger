@@ -59,9 +59,7 @@ namespace NameParser.UI.ViewModels
 			RefreshCommand = new RelayCommand(_ => LoadMembers());
 			ExportMembersCommand = new RelayCommand(_ => ExportToExcel(onlyMembers: true, onlyChallengers: false, "Members"));
 			ExportChallengersCommand = new RelayCommand(_ => ExportToExcel(onlyMembers: false, onlyChallengers: true, "Challengers"));
-			ExtrapolateVmaCommand = new RelayCommand(ExecuteExtrapolateVma, CanExecuteExtrapolateVma);
-			ExtrapolateAllVmaCommand = new RelayCommand(ExecuteExtrapolateAllVma, _ => !_isExtrapolating);
-			RecalculateRecentRacesVmaCommand = new RelayCommand(ExecuteRecalculateRecentRacesVma, _ => !_isExtrapolating);
+			RecalculateAllTimeRacesVmaCommand = new RelayCommand(ExecuteRecalculateAllTimeRacesVma, _ => !_isExtrapolating);
 			DeleteVmaRecordCommand = new RelayCommand(ExecuteDeleteVmaRecord, p => p is VmaTimelineItem item && item.RecordId.HasValue);
 
 			LoadMembers();
@@ -78,9 +76,7 @@ namespace NameParser.UI.ViewModels
 		public ICommand RefreshCommand { get; }
 		public ICommand ExportMembersCommand { get; }
 		public ICommand ExportChallengersCommand { get; }
-		public ICommand ExtrapolateVmaCommand { get; }
-		public ICommand ExtrapolateAllVmaCommand { get; }
-		public ICommand RecalculateRecentRacesVmaCommand { get; }
+		public ICommand RecalculateAllTimeRacesVmaCommand { get; }
 		public ICommand DeleteVmaRecordCommand { get; }
 
 		public Member SelectedMember
@@ -94,7 +90,6 @@ namespace NameParser.UI.ViewModels
 					LoadVmaTimeline();
 					(UpdateMemberCommand as RelayCommand)?.RaiseCanExecuteChanged();
 					(DeleteMemberCommand as RelayCommand)?.RaiseCanExecuteChanged();
-					(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
 				}
 			}
 		}
@@ -156,6 +151,20 @@ namespace NameParser.UI.ViewModels
 		{
 			get => _statusMessage;
 			set => SetProperty(ref _statusMessage, value);
+		}
+
+		private string _recentRacesVmaDisplay;
+		public string RecentRacesVmaDisplay
+		{
+			get => _recentRacesVmaDisplay;
+			set => SetProperty(ref _recentRacesVmaDisplay, value);
+		}
+
+		private string _allTimeVmaDisplay;
+		public string AllTimeVmaDisplay
+		{
+			get => _allTimeVmaDisplay;
+			set => SetProperty(ref _allTimeVmaDisplay, value);
 		}
 
 		public string SearchText
@@ -276,9 +285,13 @@ namespace NameParser.UI.ViewModels
 		private void LoadVmaTimeline()
 		{
 			VmaTimeline.Clear();
+			RecentRacesVmaDisplay = null;
+			AllTimeVmaDisplay = null;
 
 			if (SelectedMember == null)
 				return;
+
+			LoadVmaAverages();
 
 			try
 			{
@@ -355,78 +368,55 @@ namespace NameParser.UI.ViewModels
 			}
 		}
 
+		/// <summary>
+		/// Computes and displays, for the selected member, the VMA averaged over the
+		/// 5 most recent races (≤ 3 months) and the all-time VMA (every race, ±15 %
+		/// outliers excluded). Both are computed on the fly (no persistence).
+		/// </summary>
+		private void LoadVmaAverages()
+		{
+			if (SelectedMember == null)
+			{
+				RecentRacesVmaDisplay = null;
+				AllTimeVmaDisplay = null;
+				return;
+			}
+
+			try
+			{
+				var recent = _vmaExtrapolationService.ComputeRecentRacesVmaReadOnly(
+					SelectedMember.FirstName, SelectedMember.LastName);
+				RecentRacesVmaDisplay = recent != null && recent.AverageVma.HasValue
+					? $"{recent.AverageVma.Value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)} km/h"
+					: "—";
+
+				var allTime = _vmaExtrapolationService.ComputeAllTimeRacesVmaReadOnly(
+					SelectedMember.FirstName, SelectedMember.LastName);
+				AllTimeVmaDisplay = allTime != null && allTime.AverageVma.HasValue
+					? $"{allTime.AverageVma.Value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)} km/h"
+					: "—";
+			}
+			catch
+			{
+				RecentRacesVmaDisplay = "—";
+				AllTimeVmaDisplay = "—";
+			}
+		}
+
 		private bool CanExecuteExtrapolateVma(object parameter)
 		{
 			return SelectedMember != null && !_isExtrapolating;
 		}
 
-		private async void ExecuteExtrapolateVma(object parameter)
-		{
-			if (SelectedMember == null || _isExtrapolating)
-				return;
 
-			_isExtrapolating = true;
-			(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
-
-			try
-			{
-				var firstName = SelectedMember.FirstName;
-				var lastName = SelectedMember.LastName;
-
-				// Run the DB-bound extrapolation and persistence off the UI thread so the
-				// window stays responsive while the calibration data is queried.
-				var predicted = await Task.Run(() =>
-				{
-					var value = _vmaExtrapolationService.ExtrapolateVma(firstName, lastName);
-					if (value.HasValue)
-						_memberRepository.AddVmaRecord(firstName, lastName, value.Value, isExtrapolated: true);
-					return value;
-				});
-
-				if (!predicted.HasValue)
-				{
-					LoadVmaTimeline();
-					StatusMessage = $"Impossible d'extrapoler la VMA de '{SelectedMember.GetFullName()}' (données de course ou de calibration insuffisantes).";
-					MessageBox.Show(StatusMessage, "Extrapolation VMA", MessageBoxButton.OK, MessageBoxImage.Information);
-					return;
-				}
-
-				StatusMessage = $"VMA extrapolée pour '{SelectedMember.GetFullName()}' : {predicted.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)} km/h.";
-
-				LoadMembers();
-				var refreshed = _allMembers.FirstOrDefault(m =>
-					string.Equals(m.FirstName ?? string.Empty, firstName ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-					&& string.Equals(m.LastName ?? string.Empty, lastName ?? string.Empty, StringComparison.OrdinalIgnoreCase));
-				if (refreshed != null)
-				{
-					SelectedMember = refreshed;
-				}
-				else
-				{
-					LoadVmaTimeline();
-				}
-			}
-			catch (Exception ex)
-			{
-				StatusMessage = $"Error extrapolating VMA: {ex.Message}";
-				MessageBox.Show(StatusMessage, "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-			}
-			finally
-			{
-				_isExtrapolating = false;
-				(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
-			}
-		}
-
-		private async void ExecuteExtrapolateAllVma(object parameter)
+		private async void ExecuteRecalculateAllTimeRacesVma(object parameter)
 		{
 			if (_isExtrapolating)
 				return;
 
 			var confirm = MessageBox.Show(
-				"Extrapoler automatiquement la VMA de tous les membres ayant plus d'une course ?\n" +
-				"Les VMA testées restent toujours les données de référence, et seules les meilleures courses (50 %) de chaque membre sont utilisées.",
-				"Extrapolation VMA globale",
+				"Recalculer la VMA estimée sur TOUTES les courses de tous les membres (une VMA par course, sans doublon) ?",
+				"VMA toutes les courses",
 				MessageBoxButton.YesNo,
 				MessageBoxImage.Question);
 
@@ -434,81 +424,26 @@ namespace NameParser.UI.ViewModels
 				return;
 
 			_isExtrapolating = true;
-			(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
-			(ExtrapolateAllVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+			(RecalculateAllTimeRacesVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
 
 			try
 			{
-				var firstName = SelectedMember?.FirstName;
-				var lastName = SelectedMember?.LastName;
+				var count = await Task.Run(() => _vmaExtrapolationService.RecomputeAllTimeRacesVma());
 
-				var count = await Task.Run(() => _vmaExtrapolationService.ExtrapolateAllVma(minRaces: 2));
+				StatusMessage = $"VMA sur toutes les courses recalculée : {count} membre(s) estimé(s).";
+				MessageBox.Show(StatusMessage, "VMA toutes les courses", MessageBoxButton.OK, MessageBoxImage.Information);
 
-				StatusMessage = $"Extrapolation VMA globale terminée : {count} membre(s) extrapolé(s).";
-				MessageBox.Show(StatusMessage, "Extrapolation VMA globale", MessageBoxButton.OK, MessageBoxImage.Information);
-
-				LoadMembers();
-				if (firstName != null || lastName != null)
-				{
-					var refreshed = _allMembers.FirstOrDefault(m =>
-						string.Equals(m.FirstName ?? string.Empty, firstName ?? string.Empty, StringComparison.OrdinalIgnoreCase)
-						&& string.Equals(m.LastName ?? string.Empty, lastName ?? string.Empty, StringComparison.OrdinalIgnoreCase));
-					if (refreshed != null)
-					{
-						SelectedMember = refreshed;
-					}
-				}
+				LoadVmaAverages();
 			}
 			catch (Exception ex)
 			{
-				StatusMessage = $"Error extrapolating all VMAs: {ex.Message}";
+				StatusMessage = $"Error recalculating all-time VMA: {ex.Message}";
 				MessageBox.Show(StatusMessage, "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
 			}
 			finally
 			{
 				_isExtrapolating = false;
-				(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
-				(ExtrapolateAllVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
-			}
-		}
-
-		private async void ExecuteRecalculateRecentRacesVma(object parameter)
-		{
-			if (_isExtrapolating)
-				return;
-
-			var confirm = MessageBox.Show(
-				"Recalculer la VMA estimée sur les 5 dernières courses (3 derniers mois) de tous les membres ?",
-				"VMA sur dernières courses",
-				MessageBoxButton.YesNo,
-				MessageBoxImage.Question);
-
-			if (confirm != MessageBoxResult.Yes)
-				return;
-
-			_isExtrapolating = true;
-			(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
-			(ExtrapolateAllVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
-			(RecalculateRecentRacesVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
-
-			try
-			{
-				var count = await Task.Run(() => _vmaExtrapolationService.RecomputeAllRecentRacesVma());
-
-				StatusMessage = $"VMA sur dernières courses recalculée : {count} membre(s) estimé(s).";
-				MessageBox.Show(StatusMessage, "VMA sur dernières courses", MessageBoxButton.OK, MessageBoxImage.Information);
-			}
-			catch (Exception ex)
-			{
-				StatusMessage = $"Error recalculating recent-races VMA: {ex.Message}";
-				MessageBox.Show(StatusMessage, "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-			}
-			finally
-			{
-				_isExtrapolating = false;
-				(ExtrapolateVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
-				(ExtrapolateAllVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
-				(RecalculateRecentRacesVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
+				(RecalculateAllTimeRacesVmaCommand as RelayCommand)?.RaiseCanExecuteChanged();
 			}
 		}
 
