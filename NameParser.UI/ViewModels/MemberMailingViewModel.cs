@@ -1303,12 +1303,26 @@ namespace NameParser.UI.ViewModels
                     "</div>";
             }
 
-            var races = vma.Races != null && vma.Races.Count > 0
-                ? string.Join(", ", vma.Races)
-                : "-";
+            string races;
+            if (vma.Races != null && vma.Races.Count > 0)
+            {
+                const int maxRacesShown = 3;
+                races = string.Join(", ", vma.Races.Take(maxRacesShown));
+                var extraRaces = vma.Races.Count - maxRacesShown;
+                if (extraRaces > 0)
+                {
+                    var remaining = string.Join(", ", vma.Races.Skip(maxRacesShown));
+                    var tooltip = System.Net.WebUtility.HtmlEncode(remaining);
+                    races += $" <span title=\"{tooltip}\" style=\"cursor: help; text-decoration: underline dotted; color: #9C27B0;\">…+{extraRaces} autre{(extraRaces > 1 ? "s" : string.Empty)}</span>";
+                }
+            }
+            else
+            {
+                races = "-";
+            }
 
             var sb = new StringBuilder();
-            sb.AppendLine("<h2 style='color: #9C27B0;'>⚡ Ta VMA</h2>");
+            sb.AppendLine("<h2 style='color: #9C27B0;'>📊 Ton profil VMA</h2>");
             sb.AppendLine("<div style='margin: 15px 0; max-width: 520px;'>");
             sb.AppendLine(Card("VMA calculée", CardValue(vma.CalculatedVma, vma.CalculatedDate), "#9C27B0"));
             var extrapolatedTitle = vma.ExtrapolatedVma.HasValue ? "VMA extrapolée (récente) *" : "VMA extrapolée (récente)";
